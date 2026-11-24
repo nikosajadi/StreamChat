@@ -67,7 +67,19 @@
         </div>
       </header>
       <div id="messages" class="messages"></div>
+      <!-- Composer: emoji button + picker panel, text input, send button.
+           #emojiPanel is filled with emoji buttons by app.js the first time
+           it opens; it floats above the input box. -->
       <form id="composer" class="composer">
+        <button type="button" id="emojiBtn" class="emoji-btn" title="Emoji" aria-label="Open emoji picker" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8" />
+            <circle cx="9" cy="10" r=".8" fill="currentColor" />
+            <circle cx="15" cy="10" r=".8" fill="currentColor" />
+          </svg>
+        </button>
+        <div id="emojiPanel" class="emoji-panel hidden" role="dialog" aria-label="Emoji picker"></div>
         <input id="msgInput" placeholder="Write a message…" autocomplete="off" />
         <button type="submit" title="Send">➤</button>
       </form>

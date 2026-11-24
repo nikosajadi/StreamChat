@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 (2026-11-24)
+
+Added:
+- Emoji picker. There's a smiley button on the left of the message box. Click it and a panel opens with emoji in a few groups (smileys, gestures, hearts, animals, food, things). Clicking one puts it where your cursor is, and you can pick as many as you want before sending. The panel closes when you click the button again, press Escape, click somewhere else, send, or switch chats.
+- Messages that are just 1 to 3 emoji show up big without a bubble, kind of like a sticker.
+- No server changes. Emoji are just normal text.
+
 ## 1.1.0 (2026-11-24)
 
 Added:

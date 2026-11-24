@@ -101,7 +101,16 @@ s.on('connect', () => s.emit('register', { name: 'Solo' }, () =>
 1. Join with the name `<img src=x onerror=alert(1)>`.
 2. No alert should pop up. The name should show as plain text in your header, and in the contact list and chat header on the other tab. The avatar letter should be `<`.
 
-## 10. Server restart
+## 10. Emoji picker (added in 1.2.0)
+
+1. Alice and Bob in the same chat.
+2. Bob clicks the smiley next to the message box. A panel with emoji opens above it.
+3. Click two or three emoji. They should go into the message box at the cursor, and the panel stays open. Alice should see "typing…".
+4. Press Enter. The panel closes and Alice gets the emoji big, without a bubble.
+5. Send `Nice one 👍 see you later`. That one should be a normal bubble.
+6. Open the panel and check it closes with Escape, by clicking outside it, and by clicking the smiley again.
+
+## 11. Server restart
 
 1. Have Alice and Bob logged in.
 2. Stop the server (Ctrl+C) and start it again.

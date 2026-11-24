@@ -193,6 +193,7 @@
   function openChat(name) {
     activePeer = name;
     unread.delete(name);
+    closeEmojiPanel();
     $('emptyChat').classList.add('hidden');
     $('chatView').classList.remove('hidden');
     renderHeader();
@@ -229,8 +230,11 @@
   }
 
   // One message bubble. "out" = sent by me (right, gradient), "in" = received.
+  // A message that's only 1-3 emoji gets the "big-emoji" class: shown large
+  // with no bubble background, like a small sticker.
   function bubble(m) {
     const b = el('div', 'bubble ' + (m.from === me ? 'out' : 'in'));
+    if (isBigEmoji(m.text)) b.classList.add('big-emoji');
     b.append(document.createTextNode(m.text));
     b.append(el('div', 'meta', fmtTime(m.time)));
     return b;
@@ -317,7 +321,108 @@
       else clientLog(`Send failed: ${res.error}`);
     });
     $('msgInput').value = '';
+    closeEmojiPanel();
   });
+
+  // =========================================================================
+  // Component: Emoji picker
+  // =========================================================================
+  // The smiley button next to the input opens a panel of emoji grouped by
+  // category. Clicking one inserts it at the cursor in the message box; the
+  // user can pick several and then send as usual. The panel is built once,
+  // the first time it opens. Closes on: second click on the button, Escape,
+  // click outside, sending, or switching chats.
+
+  // Emoji list, grouped. Each string is split on spaces.
+  const EMOJI_GROUPS = [
+    ['Smileys', '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 😉 😌 😍 🥰 😘 😋 😛 😜 🤪 😎 🤩 🥳 😏 😒 😔 😢 😭 😤 😠 😡 🤯 😳 😱 😨 🤔 🤫 🤭 🙄 😴 🤒 🤧 😷 🤠 🤡 👻 💀 🤖'],
+    ['Gestures', '👍 👎 👌 ✌️ 🤞 🤟 🤘 👋 🤙 👏 🙌 🙏 🤝 💪 👀 👆 👇 👉 👈 ✋'],
+    ['Hearts', '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💕 💞 💖 💘 💯 ✨ 🔥 ⭐ 🌟 💥 🎉'],
+    ['Animals', '🐶 🐱 🐭 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦄 🐝 🦋'],
+    ['Food', '🍎 🍊 🍋 🍉 🍇 🍓 🍒 🍑 🍍 🥑 🍕 🍔 🍟 🌭 🌮 🍿 🍩 🍪 🎂 ☕'],
+    ['Things', '⚽ 🏀 🎮 🎧 🎵 📱 💻 📷 🎁 🎈 📚 ✏️ 💡 🔑 🚀 ✈️ 🚗 🏠 ⏰ ✅'],
+  ];
+
+  const emojiBtn = $('emojiBtn');
+  const emojiPanel = $('emojiPanel');
+  let emojiBuilt = false;
+
+  // Fills the panel with a title + grid of emoji buttons per group.
+  // Emoji are set with textContent like everything else.
+  function buildEmojiPanel() {
+    for (const [title, list] of EMOJI_GROUPS) {
+      const grid = el('div', 'emoji-grid');
+      for (const emoji of list.split(' ')) {
+        const btn = el('button', '', emoji);
+        btn.type = 'button';           // don't submit the form
+        btn.title = emoji;
+        // mousedown + preventDefault keeps focus in the message box, so the
+        // cursor position is kept and no "stopped typing" fires on blur.
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.addEventListener('click', () => insertEmoji(emoji));
+        grid.append(btn);
+      }
+      emojiPanel.append(el('div', 'emoji-group', title), grid);
+    }
+    emojiBuilt = true;
+  }
+
+  function openEmojiPanel() {
+    if (!emojiBuilt) buildEmojiPanel();
+    emojiPanel.classList.remove('hidden');
+    emojiBtn.classList.add('open');
+    emojiBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeEmojiPanel() {
+    emojiPanel.classList.add('hidden');
+    emojiBtn.classList.remove('open');
+    emojiBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  // Puts the emoji where the cursor is (or replaces the selected text),
+  // moves the cursor after it, and fires an "input" event so the normal
+  // typing indicator logic runs.
+  function insertEmoji(emoji) {
+    const input = $('msgInput');
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+    const caret = start + emoji.length;
+    input.focus();
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event('input'));
+  }
+
+  // Button toggles the panel. Same mousedown trick to keep input focus.
+  emojiBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  emojiBtn.addEventListener('click', () => {
+    if (emojiPanel.classList.contains('hidden')) openEmojiPanel();
+    else closeEmojiPanel();
+    $('msgInput').focus();
+  });
+
+  // Click anywhere outside the panel and the button closes it.
+  document.addEventListener('click', (e) => {
+    if (!emojiPanel.contains(e.target) && !emojiBtn.contains(e.target)) closeEmojiPanel();
+  });
+
+  // Escape closes it too.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeEmojiPanel();
+  });
+
+  // True if the text is only emoji (ignoring spaces) and at most 3 of them.
+  // Intl.Segmenter counts what you see as one emoji (e.g. ❤️ or 👍🏽)
+  // as one, even when it's made of several code points.
+  const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|‍|️|\s)+$/u;
+  const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter() : null;
+  function isBigEmoji(text) {
+    if (!EMOJI_ONLY.test(text)) return false;
+    const compact = text.replace(/\s/g, '');
+    const count = segmenter ? [...segmenter.segment(compact)].length : [...compact].length;
+    return count >= 1 && count <= 3;
+  }
 
   // =========================================================================
   // Component: Login

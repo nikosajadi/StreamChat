@@ -38,6 +38,8 @@ It's one Node.js process doing two things:
 - Contact list: sorting, search, online dots, last message, unread count, "typing…".
 - Chat: header with status, message bubbles, the three-dot typing bubble.
 - Input box: sends messages and the typing start/stop events.
+- Emoji picker: the smiley button opens a panel built once from a list in `app.js` (`EMOJI_GROUPS`). Clicking an emoji inserts it at the cursor and fires a normal `input` event, so the typing indicator works the same as with the keyboard. Emoji buttons use `mousedown` + `preventDefault` so the message box keeps focus.
+- Big emoji: `isBigEmoji()` checks if a message is only emoji and at most 3 of them (counted with `Intl.Segmenter`, so things like ❤️ count as one). Those bubbles get the `big-emoji` class.
 - Login: calls `register`, loads contacts and old messages, switches screens.
 - Socket listeners for everything the server sends. Logs back in by itself after a reconnect.
 

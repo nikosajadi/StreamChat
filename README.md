@@ -19,6 +19,7 @@ Client:
 - Last message preview, unread count, and search in the contact list.
 - New users show up in the list right away.
 - "typing…" under the name and three dots in the chat.
+- Emoji button next to the message box. Pick emoji from a small panel and send them. A message that's only 1 to 3 emoji shows up big.
 - Log panel you can hide with the ⌘ button.
 - If the connection drops or the server restarts, the page logs you back in by itself.
 
@@ -54,8 +55,9 @@ $env:PORT=4000; npm start      # Windows PowerShell
 2. Other users show up on the left. Green dot means online.
 3. Click someone, type, hit Enter.
 4. While you type, they see "typing…".
-5. Close a tab and that user goes offline for everyone else.
-6. Watch the log panel on the right to see what's going on.
+5. Click the smiley next to the message box to add emoji.
+6. Close a tab and that user goes offline for everyone else.
+7. Watch the log panel on the right to see what's going on.
 
 ## Files
 
