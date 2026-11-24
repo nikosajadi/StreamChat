@@ -1,9 +1,13 @@
 // ===========================================================================
-// StreamChat — public/app.js (client)
+// StreamChat - public/app.js (client)
 // ---------------------------------------------------------------------------
-// Runs in the browser. Connects to the Socket.IO server, handles login,
-// renders the contact list and chat view, sends messages and typing events,
+// Runs in the browser. Connects to the Socket.IO server, handles login
+// (and keeps each name's token in localStorage), renders the contact list
+// and chat view, sends messages and typing events, runs the emoji picker,
 // and shows the live "Server & Socket Log" panel.
+//
+// All user data (names, messages, log text) is put on the page with
+// textContent / createTextNode. There's no innerHTML in this file.
 //
 // The whole file is wrapped in an IIFE so nothing leaks into the global scope.
 // ===========================================================================
@@ -100,7 +104,7 @@
     if (atBottom) logList.scrollTop = logList.scrollHeight;
   }
 
-  // Logs a client-side event (yellow "CLIENT" level) — not sent to the server.
+  // Logs a client-side event (yellow "CLIENT" level). Not sent to the server.
   const clientLog = (text) => addLog({ time: Date.now(), level: 'client', text });
 
   // "clear" link empties the panel (local only); ⌘ button shows/hides it.
@@ -111,7 +115,7 @@
   // Component: Contacts list (left column)
   // =========================================================================
 
-  // Last message exchanged with a peer (or null) — used for the preview line
+  // Last message exchanged with a peer (or null). Used for the preview line
   // and for sorting.
   function lastMessage(name) {
     const conv = conversations.get(name);
@@ -139,7 +143,7 @@
 
     // Empty state.
     if (!sorted.length) {
-      list.append(el('li', 'section-title', q ? 'No match' : 'No other users yet — open another tab!'));
+      list.append(el('li', 'section-title', q ? 'No match' : 'No other users yet. Open another tab!'));
     }
 
     // One <li> per contact: avatar + name + sub-line (+ unread badge).
@@ -510,7 +514,7 @@
     if (me) register(me, (err) => err && clientLog(`Re-register failed: ${err}`));
   });
 
-  // Lost connection — Socket.IO will retry automatically.
+  // Lost connection. Socket.IO will retry automatically.
   socket.on('disconnect', (reason) => {
     $('connState').textContent = 'disconnected';
     $('connState').className = 'conn off';

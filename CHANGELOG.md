@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Updated the comments at the top of `server.js`, `app.js` and `index.html` so they mention tokens, the message limit, no message text in logs, and the emoji picker.
+- Cleaned up comment wording, and the online/offline log lines now read like `User online: "Alice", online now: 2/3`.
+
 ## 1.2.0 (2026-11-24)
 
 Added:

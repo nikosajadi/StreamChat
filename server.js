@@ -1,18 +1,21 @@
 // ===========================================================================
-// StreamChat — server.js
+// StreamChat - server.js
 // ---------------------------------------------------------------------------
 // A small messenger simulator server built with Express + Socket.IO.
 //
-// Responsibilities:
-//   1. Serve the static client panel from /public (HTML, CSS, JS).
-//   2. Register clients by name (or log an existing name back in).
-//   3. Relay private messages between users in real time.
-//   4. Forward "is typing" indicators from one user to another.
-//   5. Track online / offline presence and notify every client.
-//   6. Log every server/socket event to the console AND to all connected
-//      panels (shown in the "Server & Socket Log" column of the UI).
+// What it does:
+//   1. Serves the client page from /public (HTML, CSS, JS).
+//   2. Registers clients by name. Each new name gets a secret token, and
+//      logging back in to that name later needs the same token.
+//   3. Passes private messages between users in real time. Keeps the last
+//      MESSAGE_LIMIT (1000) messages so offline users get them later.
+//   4. Forwards "is typing" from one user to another, and clears it if the
+//      typing user disconnects.
+//   5. Tracks online / offline and tells every client.
+//   6. Logs every server/socket event to the console AND to all connected
+//      tabs (the "Server & Socket Log" column). Message text is never logged.
 //
-// All data is kept in memory — restarting the server clears everything.
+// All data is kept in memory. Restarting the server clears everything.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -76,9 +79,9 @@ const COLORS = { info: 36, success: 32, warn: 33, error: 31, msg: 35, typing: 90
 
 // log(level, text)
 // Writes one event to three places:
-//   1. logBuffer  — so late-joining panels can see history
-//   2. console    — colored line in the terminal running the server
-//   3. io.emit    — pushes the entry live to every connected client panel
+//   1. logBuffer: so tabs that connect later can see what happened before
+//   2. console:   colored line in the terminal running the server
+//   3. io.emit:   pushes the entry live to every connected tab
 function log(level, text) {
   const entry = { time: Date.now(), level, text };
 
@@ -110,7 +113,7 @@ function userList() {
   return [...users.values()].map(publicUser);
 }
 
-// All messages a given user sent or received — used to restore the chat
+// All messages a given user sent or received. Used to restore the chat
 // history when a user logs back in.
 function historyFor(name) {
   return messages.filter((m) => m.from === name || m.to === name);
@@ -152,7 +155,7 @@ function toAck(ack) {
 //                               typing        (someone is typing to you)
 // ===========================================================================
 io.on('connection', (socket) => {
-  // A raw socket connected — it is NOT registered yet (no name).
+  // A raw socket connected. It is NOT registered yet (no name).
   const ip = socket.handshake.address;
   log('info', `Socket connected: id=${socket.id} ip=${ip}`);
 
@@ -180,7 +183,7 @@ io.on('connection', (socket) => {
     // would overwrite socket.data.name, so the first user would never be
     // marked offline on disconnect and the socket would stay in the first
     // user's room (still receiving their messages). Reconnects are not
-    // affected — a reconnect always uses a brand-new socket.
+    // affected, because a reconnect always uses a brand-new socket.
     if (socket.data.name) {
       log('warn', `Registration rejected: socket ${socket.id} is already registered as "${socket.data.name}"`);
       return ack({ ok: false, error: 'Already registered.' });
@@ -257,7 +260,7 @@ io.on('connection', (socket) => {
     } else {
       log('success', `User logged back in: "${name}" (socket ${socket.id})`);
     }
-    log('info', `User online: "${name}" — online now: ${onlineCount()}/${users.size}`);
+    log('info', `User online: "${name}", online now: ${onlineCount()}/${users.size}`);
     socket.broadcast.emit('user:online', publicUser(users.get(name)));
   });
 
@@ -351,7 +354,7 @@ io.on('connection', (socket) => {
     // Socket never registered -> nothing else to update.
     if (!name) return;
 
-    // The user may have closed the tab while typing — the client never got
+    // The user may have closed the tab while typing, so the client never got
     // to send `isTyping:false`. Send it on their behalf to every recipient.
     for (const to of socket.data.typingTo) {
       io.to(`user:${to}`).emit('typing', { from: name, isTyping: false });
@@ -367,7 +370,7 @@ io.on('connection', (socket) => {
       u.socketId = null;
       u.lastSeen = Date.now();
       io.emit('user:offline', publicUser(u));
-      log('warn', `User offline: "${name}" — online now: ${onlineCount()}/${users.size}`);
+      log('warn', `User offline: "${name}", online now: ${onlineCount()}/${users.size}`);
     }
   });
 });
