@@ -1,29 +1,31 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## Unreleased
 
-## [1.0.2] — 2026-11-24
+- Added `docs/TESTING.md` with the manual tests I run after changes.
+- Rewrote README, ARCHITECTURE and this file in plainer wording.
 
-### Fixed
-- **Stuck typing indicator:** if a user closed the tab while typing, the server never sent `isTyping: false`. The server now tracks open typing states per socket and sends `typing { isTyping: false }` to every affected recipient on `disconnect`.
-- **Possible crash on invalid ack:** the default `ack = () => {}` only covered `undefined`; a client sending a non-function as the last argument made `ack(...)` throw. Handlers now use a `toAck()` helper that always returns a callable function.
+## 1.0.2 (2026-11-24)
 
-## [1.0.1] — 2026-11-24
+Fixed:
+- Typing indicator could get stuck. If someone closed the tab while typing, the server never sent "stopped typing". Now the server keeps track of who each socket is typing to and sends `isTyping: false` to them on disconnect.
+- Server could crash from a bad callback. `ack = () => {}` only covers the case where nothing is sent. If a client sent something like a number instead of a function, calling it threw `TypeError: ack is not a function` and took the whole server down. Added a small `toAck()` helper that always gives back a function.
 
-### Fixed
-- A socket that sent `register` a second time (with another name) could leave the first user permanently "online" and keep receiving that user's messages through the old `user:<name>` room. The server now rejects any `register` on a socket that is already registered (`{ ok: false, error: 'Already registered.' }`) and logs a warning.
+## 1.0.1 (2026-11-24)
 
-## [1.0.0] — 2026-11-24
+Fixed:
+- One socket could register twice with two different names. The first name then stayed online forever and the socket kept getting that user's messages through the old room. Now a second `register` on the same socket gets `{ ok: false, error: 'Already registered.' }`.
 
-### Added
-- Express + Socket.IO server with in-memory state for users, messages and logs.
-- Hub methods: `register`, `message:send`, `typing`, plus `disconnect` handling.
-- Presence broadcasting: `user:new`, `user:online`, `user:offline`.
-- Central `log()` function: colored terminal output and live `server:log` stream to all clients.
-- Dark, minimal messenger client: login, contact list, chat view, composer.
-- Typing indicator (header, contact list and animated bubble), unread badges, contact search, last-seen labels.
-- Live **Server & Socket Log** panel with level colors, clear and toggle buttons.
-- Automatic re-registration after reconnect.
-- Detailed English comments across all source files.
-- Project documentation: `README.md`, `docs/ARCHITECTURE.md`, `CHANGELOG.md`.
+## 1.0.0 (2026-11-24)
+
+First version:
+- Express + Socket.IO server, everything kept in memory.
+- Events: `register`, `message:send`, `typing`, plus handling `disconnect`.
+- Online / offline updates: `user:new`, `user:online`, `user:offline`.
+- One `log()` function that prints to the terminal and sends each line to the browser.
+- Dark chat page with login, contacts, chat window and input box.
+- Typing indicator, unread count, search, last seen.
+- Log panel with colors per level, plus clear and hide buttons.
+- Logs back in by itself after a reconnect.
+- Comments in all source files.
+- README, ARCHITECTURE and CHANGELOG.

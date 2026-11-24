@@ -1,164 +1,126 @@
 # StreamChat
 
-A lightweight, real-time **messenger simulator** built with **Node.js**, **Express** and **Socket.IO**.
-It runs a server that registers clients, relays private messages, broadcasts typing indicators and online/offline presence, and a minimal dark-themed web client that looks and behaves like a modern messenger — including a live **Server & Socket Log** panel that shows every event as it happens.
+A small messenger I built to play with Socket.IO. There's a Node.js server that keeps track of who's online and passes messages around, and a simple dark-themed web page that works like a chat app.
 
-> Purpose: a clean, well-commented reference project for learning and demonstrating real-time communication patterns with Socket.IO.
+On the right side of the page there's a log panel that shows what the server is doing in real time (who connected, who's typing, who sent what), which is handy for seeing how the events flow.
 
----
+## What it does
 
-## Table of contents
+Server:
+- Users join with just a name. If you come back with the same name later, you get your old messages back.
+- Private one-to-one messages. If the other person is offline, the message is kept and they'll see it when they come back.
+- Typing indicator, sent only to the person you're chatting with.
+- Online / offline / last seen for everyone.
+- Every event is printed in the terminal and also sent to the log panel in the browser.
 
-1. [Features](#features)
-2. [Tech stack](#tech-stack)
-3. [Quick start](#quick-start)
-4. [How to use](#how-to-use)
-5. [Project structure](#project-structure)
-6. [Architecture](#architecture)
-7. [Socket.IO event reference](#socketio-event-reference)
-8. [Configuration](#configuration)
-9. [Limitations](#limitations)
-10. [Roadmap](#roadmap)
-11. [Changelog](#changelog)
+Client:
+- Login screen, contact list, chat window.
+- Green dot for online users, "last seen" for offline ones.
+- Last message preview, unread count, and search in the contact list.
+- New users show up in the list right away.
+- "typing…" under the name and three dots in the chat.
+- Log panel you can hide with the ⌘ button.
+- If the connection drops or the server restarts, the page logs you back in by itself.
 
----
+## Stack
 
-## Features
+- Node.js (I used v20, v18+ should be fine)
+- Express 4 for serving the page
+- Socket.IO 4 for the real-time part
+- Plain HTML, CSS and JS on the client, no build step
+- No database, everything lives in memory
 
-**Server**
-- Registers users by display name (unique while online); returning users log back in with their history.
-- Relays private one-to-one messages in real time; stores messages for offline users.
-- Forwards "is typing" indicators to the intended recipient only.
-- Tracks presence (online / offline / last seen) and broadcasts changes to all clients.
-- Logs every server and socket event (in English) to the terminal **and** streams it to every connected client.
-
-**Client**
-- Login screen — pick a name to join.
-- Contact list with avatars, green online dot, *last seen*, last-message preview, unread badges and search.
-- New users appear in the contact list instantly (with a highlight animation).
-- Chat view with message bubbles, timestamps and an animated typing indicator.
-- Live **Server & Socket Log** panel (toggle with the ⌘ button).
-- Automatic re-registration after a reconnect (network drop or server restart).
-- Minimal dark theme; all colors are defined once as CSS variables.
-
-## Tech stack
-
-| Layer      | Technology                                   |
-|------------|----------------------------------------------|
-| Runtime    | Node.js (v18+ recommended; tested on v20)    |
-| HTTP       | Express 4                                    |
-| Real-time  | Socket.IO 4                                  |
-| Client     | Vanilla HTML, CSS and JavaScript (no build)  |
-| Storage    | In-memory (no database)                      |
-
-## Quick start
+## Running it
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Start the server
 npm start
-
-# 3. Open the client
-#    http://localhost:3000
 ```
 
-Open the URL in **two or more browser tabs** (or different browsers) and join with different names to simulate a conversation.
+Then go to http://localhost:3000.
 
-## How to use
+Open it in two or more tabs (or two browsers) and join with different names to chat between them.
 
-1. Enter a name on the login screen and press **Join**.
-2. Other registered users appear in the **Contacts** list on the left. A green dot means online.
-3. Click a contact to open the chat, type a message and press **Enter** (or the send button).
-4. While you type, the other side sees *typing…* in their contact list and chat header.
-5. Close a tab to see that user go **offline** for everyone else.
-6. Watch the **Server & Socket Log** panel on the right to follow every event.
-
-## Project structure
-
-```
-StreamChat/
-├── server.js          # Express + Socket.IO server (state, hub methods, logging)
-├── package.json       # Dependencies and npm scripts
-├── public/            # Static client served by Express
-│   ├── index.html     # Page skeleton: login + 3-column layout
-│   ├── style.css      # Minimal dark theme
-│   └── app.js         # Client logic: socket events, rendering, typing, login
-├── docs/
-│   └── ARCHITECTURE.md  # Detailed design, data flow and sequence diagrams
-├── CHANGELOG.md       # Version history
-└── README.md
-```
-
-## Architecture
-
-```
-┌──────────────┐   WebSocket (Socket.IO)   ┌──────────────────────────┐
-│  Browser tab │ ◀───────────────────────▶ │        server.js         │
-│  (app.js)    │                           │  Express (static files)  │
-└──────────────┘                           │  Socket.IO hub           │
-┌──────────────┐                           │  In-memory state:        │
-│  Browser tab │ ◀───────────────────────▶ │   users · messages · log │
-└──────────────┘                           └──────────────────────────┘
-```
-
-- Each user joins a personal room `user:<name>`; messages and typing events are sent to that room.
-- The server is the single source of truth: a sent message is rendered only after the server acknowledges it.
-- Every event goes through one `log()` function that writes to the console and broadcasts `server:log`.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and sequence diagrams.
-
-## Socket.IO event reference
-
-### Client → Server
-
-| Event          | Payload              | Ack response                                          | Description                         |
-|----------------|----------------------|-------------------------------------------------------|-------------------------------------|
-| `register`     | `{ name }`           | `{ ok, me, users, history }` or `{ ok:false, error }` | Register a new user or log back in (once per socket). |
-| `message:send` | `{ to, text }`       | `{ ok, message }` or `{ ok:false, error }`            | Send a private message.             |
-| `typing`       | `{ to, isTyping }`   | —                                                     | Start / stop typing indicator.      |
-
-### Server → Client
-
-| Event          | Payload                                   | Sent to                 | Description                          |
-|----------------|-------------------------------------------|-------------------------|--------------------------------------|
-| `server:logs`  | `[ { time, level, text } ]`               | the connecting socket   | Recent log history.                  |
-| `server:log`   | `{ time, level, text }`                   | everyone                | One new log entry.                   |
-| `user:new`     | `{ name, online, lastSeen }`              | everyone except sender  | A brand-new user registered.         |
-| `user:online`  | `{ name, online, lastSeen }`              | everyone except sender  | A user came online.                  |
-| `user:offline` | `{ name, online, lastSeen }`              | everyone                | A user went offline.                 |
-| `message:new`  | `{ id, from, to, text, time, delivered }` | recipient's room        | Incoming message.                    |
-| `typing`       | `{ from, isTyping }`                      | recipient's room        | Someone is (not) typing to you.      |
-
-Log levels: `info`, `success`, `warn`, `error`, `msg`, `typing` (server) and `client` (local, client-only).
-
-## Configuration
-
-| Variable | Default | Description          |
-|----------|---------|----------------------|
-| `PORT`   | `3000`  | HTTP / Socket port.  |
+To use another port:
 
 ```bash
 PORT=4000 npm start            # macOS / Linux
 $env:PORT=4000; npm start      # Windows PowerShell
 ```
 
-## Limitations
+## How to use
 
-- **In-memory only** — restarting the server clears all users and messages.
-- **No authentication** — a name is the identity; anyone can take a name that is currently offline.
-- **One active tab per name** — the same name cannot be online twice.
-- On screens narrower than 1000 px the log panel is hidden.
+1. Type a name and hit Join.
+2. Other users show up on the left. Green dot means online.
+3. Click someone, type, hit Enter.
+4. While you type, they see "typing…".
+5. Close a tab and that user goes offline for everyone else.
+6. Watch the log panel on the right to see what's going on.
 
-## Roadmap
+## Files
 
-- [ ] Persistent storage (SQLite / MongoDB)
-- [ ] Read receipts (sent / delivered / seen)
-- [ ] Group chats / rooms
-- [ ] Authentication
-- [ ] Mobile-friendly layout
+```
+StreamChat/
+├── server.js            server: state, socket events, logging
+├── package.json
+├── public/
+│   ├── index.html       page layout
+│   ├── style.css        dark theme
+│   └── app.js           client logic
+├── docs/
+│   ├── ARCHITECTURE.md  how it works under the hood
+│   └── TESTING.md       manual tests to run after changes
+├── CHANGELOG.md
+└── README.md
+```
 
-## Changelog
+## How it works (short version)
+
+Every tab opens a socket to the server. When you register, your socket joins a room called `user:<your name>`. Messages and typing events for you get sent to that room. The server keeps users, messages and the last 300 log lines in memory.
+
+A message you send only shows up on your side after the server confirms it, so what you see is what was actually saved.
+
+More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Socket events
+
+Client to server:
+
+| Event          | Payload            | Reply                                                | What it does                           |
+|----------------|--------------------|------------------------------------------------------|----------------------------------------|
+| `register`     | `{ name }`         | `{ ok, me, users, history }` or `{ ok:false, error }` | Join or log back in. Once per socket.  |
+| `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | Send a private message.                |
+| `typing`       | `{ to, isTyping }` | none                                                 | Started / stopped typing.              |
+
+Server to client:
+
+| Event          | Payload                                   | Who gets it              | What it means                  |
+|----------------|-------------------------------------------|--------------------------|--------------------------------|
+| `server:logs`  | list of log entries                       | the tab that just connected | Recent log history.         |
+| `server:log`   | `{ time, level, text }`                   | everyone                 | One new log line.              |
+| `user:new`     | `{ name, online, lastSeen }`              | everyone but the new user | Someone new joined.           |
+| `user:online`  | `{ name, online, lastSeen }`              | everyone but that user   | Someone came online.           |
+| `user:offline` | `{ name, online, lastSeen }`              | everyone                 | Someone went offline.          |
+| `message:new`  | `{ id, from, to, text, time, delivered }` | the receiver             | New message for you.           |
+| `typing`       | `{ from, isTyping }`                      | the receiver             | Someone is (or stopped) typing to you. |
+
+Log levels: `info`, `success`, `warn`, `error`, `msg`, `typing` from the server, and `client` for things only your own tab logs.
+
+## Things to know
+
+- Everything is in memory. Restart the server and it's all gone.
+- No passwords. Your name is your identity, so anyone can take a name that's currently offline.
+- One tab per name at a time.
+- On screens narrower than 1000px the log panel is hidden.
+
+## Ideas for later
+
+- [ ] Save users and messages in a database (SQLite or MongoDB)
+- [ ] Seen / delivered ticks
+- [ ] Group chats
+- [ ] Login with a password
+- [ ] Better layout on phones
+
+## Changes
 
 See [CHANGELOG.md](CHANGELOG.md).
