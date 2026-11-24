@@ -27,7 +27,7 @@ It's one Node.js process doing two things:
 ## Server (server.js)
 
 - Setup: Express app, HTTP server and Socket.IO on the same port.
-- State: `users` (a Map by name), `messages` (an array), `logBuffer` (last 300 log lines).
+- State: `users` (a Map by name), `messages` (last 1000 messages), `logBuffer` (last 300 log lines).
 - `log()`: the one place everything gets logged. Prints a colored line in the terminal, saves it in the buffer and sends it to every tab.
 - Small helpers: `publicUser`, `userList`, `historyFor`, `cleanName`, `onlineCount`, `toAck`.
 - Socket handlers: `register`, `message:send`, `typing`, `disconnect`.
@@ -45,9 +45,9 @@ It's one Node.js process doing two things:
 
 ```js
 // user, on the server
-{ name, socketId /* null when offline */, online, lastSeen, registeredAt }
+{ name, token, socketId /* null when offline */, online, lastSeen, registeredAt }
 
-// user, as sent to other clients (no socket id)
+// user, as sent to other clients (no token, no socket id)
 { name, online, lastSeen }
 
 // message
@@ -81,7 +81,10 @@ Client A                         Server                               Others
 The server says no if:
 - this socket already registered (one name per socket, see 1.0.1 in the changelog),
 - the name is empty,
-- someone with that name is already online.
+- someone with that name is already online,
+- the name exists but is offline and the token doesn't match ("This name is already taken.").
+
+New names get a token from `crypto.randomUUID()`. It comes back only in the register reply, and the browser stores it in localStorage as `streamchat:token:<name>`. The browser sends it with every register, including automatic ones after a reconnect.
 
 The first rule doesn't get in the way of reconnecting, because Socket.IO always makes a new socket when it reconnects.
 
@@ -97,6 +100,10 @@ Bob                              Server                              Alice
 ```
 
 If Alice is offline the message is saved with `delivered: false` and she gets it in her history next time she logs in.
+
+Sending to yourself is rejected. Only the last 1000 messages are kept; older ones are dropped.
+
+The log line for a message only has the id, sender, receiver, delivered or stored, and the length. Never the text, because the log is sent to every tab.
 
 ### Typing
 
@@ -116,7 +123,9 @@ Socket.IO reconnects by itself. When it does, the page calls `register` again wi
 
 ## Safety stuff
 
-- User text is always put on the page with `textContent`, never `innerHTML`, so nobody can inject HTML or scripts.
+- User text is always put on the page with `textContent` or `createTextNode`. The client doesn't use `innerHTML` anywhere, so nobody can inject HTML or scripts. Escaping happens in the browser when rendering, not on the server.
+- Names can't be taken over while their owner is offline, thanks to the token.
+- Message text never shows up in the log.
 - Names are trimmed and cut to 24 characters. Messages are cut to 2000.
 - Socket ids are never sent to other users.
 - Reply callbacks go through `toAck()`, so a client sending junk instead of a function can't crash the server.

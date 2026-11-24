@@ -18,6 +18,7 @@ Then open http://localhost:3000.
 2. Alice should see Bob pop up in her contact list (with a short highlight), and the other way around.
 3. Send a message from Bob to Alice. It should show up for Alice right away, with an unread badge if her chat with Bob isn't open.
 4. Close Bob's tab. Alice should see Bob go offline ("last seen just now").
+5. In the log panel the message line should look like `Message #1 "Bob" → "Alice" (delivered), 5 chars`. The text itself should not be there.
 
 ## 2. Typing indicator
 
@@ -75,7 +76,32 @@ s.on('connect', () => {
 2. Try to join as `Alice` in another tab.
 3. You should get "This name is already online." on the login screen.
 
-## 7. Server restart
+## 7. Logging back in and stealing a name (added in 1.1.0)
+
+1. Join as `Alice` in a tab, send a message to someone, then close the tab.
+2. Open a new tab in the same browser and join as `Alice` again. You should get in and see your old messages.
+3. Close it again. Now open a private / incognito window (it has its own empty localStorage) and try to join as `Alice`.
+4. You should get "This name is already taken." and the log shows `wrong or missing token for "Alice"`.
+
+## 8. Messaging yourself (added in 1.1.0)
+
+1. Join as `Alice`. You shouldn't see yourself in the contact list.
+2. F12, Console:
+
+```js
+const s = io({ forceNew: true });
+s.on('connect', () => s.emit('register', { name: 'Solo' }, () =>
+  s.emit('message:send', { to: 'Solo', text: 'hi' }, (r) => console.log(r))));
+```
+
+3. You should get `{ ok: false, error: 'You cannot message yourself.' }`.
+
+## 9. HTML in names
+
+1. Join with the name `<img src=x onerror=alert(1)>`.
+2. No alert should pop up. The name should show as plain text in your header, and in the contact list and chat header on the other tab. The avatar letter should be `<`.
+
+## 10. Server restart
 
 1. Have Alice and Bob logged in.
 2. Stop the server (Ctrl+C) and start it again.

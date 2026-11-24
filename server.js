@@ -19,6 +19,7 @@
 // Imports
 // ---------------------------------------------------------------------------
 const path = require('path');             // builds the absolute path to /public
+const crypto = require('crypto');         // randomUUID() for per-user session tokens
 const http = require('http');             // raw HTTP server that Socket.IO attaches to
 const express = require('express');       // serves the static client files
 const { Server } = require('socket.io');  // real-time WebSocket layer
@@ -44,14 +45,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ---------------------------------------------------------------------------
 
 // Registered users, keyed by display name.
-// Shape: name -> { name, socketId|null, online, lastSeen, registeredAt }
+// Shape: name -> { name, token, socketId|null, online, lastSeen, registeredAt }
+//   - token is a secret given to the first owner of the name. Logging back
+//     in with that name requires it, so nobody else can take it over.
+//     It is never sent to anyone except its owner.
 //   - socketId is null while the user is offline.
 //   - lastSeen is updated on login and on disconnect.
 const users = new Map();
 
-// Every message ever sent, in order.
+// Recent messages, oldest first. Capped at MESSAGE_LIMIT so memory can't
+// grow forever; the oldest ones are dropped first (same idea as logBuffer).
 // Shape: { id, from, to, text, time, delivered }
 const messages = [];
+const MESSAGE_LIMIT = 1000;
 
 // Ring buffer of the most recent log entries. A newly connected panel
 // receives this buffer so it can show what happened before it joined.
@@ -93,8 +99,8 @@ function log(level, text) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Returns only the fields that are safe to send to other clients
-// (we never expose socket ids).
+// Returns only the fields that are safe to send to other clients.
+// Never add socketId or token here: this object is broadcast to everyone.
 function publicUser(u) {
   return { name: u.name, online: u.online, lastSeen: u.lastSeen };
 }
@@ -156,12 +162,14 @@ io.on('connection', (socket) => {
   // -------------------------------------------------------------------------
   // Hub method: register
   // -------------------------------------------------------------------------
-  // Payload: { name }
-  // Ack:     { ok: true, me, users, history } | { ok: false, error }
+  // Payload: { name, token? }
+  // Ack:     { ok: true, me, token, users, history } | { ok: false, error }
   //
-  // - New name         -> creates the user, broadcasts `user:new`.
-  // - Known, offline   -> logs the user back in (keeps their history).
-  // - Known, online    -> rejected (names are unique while online).
+  // - New name                     -> creates the user with a fresh token,
+  //                                   broadcasts `user:new`.
+  // - Known, offline, right token  -> logs the user back in (keeps history).
+  // - Known, offline, wrong token  -> rejected ("This name is already taken.").
+  // - Known, online                -> rejected (names are unique while online).
   // In both success cases `user:online` is broadcast to everyone else.
   // A socket can register only ONCE; a second `register` is rejected.
   socket.on('register', (payload, rawAck) => {
@@ -193,6 +201,15 @@ io.on('connection', (socket) => {
       return ack({ ok: false, error: 'This name is already online.' });
     }
 
+    // Validation: logging back in to an existing (offline) name needs the
+    // token that was handed out when the name was first registered.
+    // Without this, anyone could type an offline user's name and read
+    // their history or send messages as them.
+    if (existing && (!payload || payload.token !== existing.token)) {
+      log('warn', `Registration rejected: wrong or missing token for "${name}" (socket ${socket.id})`);
+      return ack({ ok: false, error: 'This name is already taken.' });
+    }
+
     // Either reuse the existing (offline) record or create a fresh one.
     let isNew = false;
     if (existing) {
@@ -203,6 +220,7 @@ io.on('connection', (socket) => {
       isNew = true;
       users.set(name, {
         name,
+        token: crypto.randomUUID(), // secret, only ever sent back to this user
         socketId: socket.id,
         online: true,
         lastSeen: Date.now(),
@@ -222,7 +240,14 @@ io.on('connection', (socket) => {
     socket.join(`user:${name}`);
 
     // Reply to the caller with everything it needs to render the UI.
-    ack({ ok: true, me: name, users: userList(), history: historyFor(name) });
+    // The token goes ONLY to this caller (in the ack), never in a broadcast.
+    ack({
+      ok: true,
+      me: name,
+      token: users.get(name).token,
+      users: userList(),
+      history: historyFor(name),
+    });
 
     // Notify everyone else. `user:new` adds a contact; `user:online` flips
     // an existing contact's status dot to green.
@@ -255,6 +280,7 @@ io.on('connection', (socket) => {
 
     // Validation: sender must be registered, recipient must exist, text non-empty.
     if (!from) return ack({ ok: false, error: 'Not registered.' });
+    if (to === from) return ack({ ok: false, error: 'You cannot message yourself.' });
     if (!users.has(to)) return ack({ ok: false, error: 'Recipient not found.' });
     if (!text) return ack({ ok: false, error: 'Empty message.' });
 
@@ -270,17 +296,20 @@ io.on('connection', (socket) => {
     };
     messages.push(msg);
 
+    // Keep the array bounded: drop the oldest message once over the limit.
+    if (messages.length > MESSAGE_LIMIT) messages.shift();
+
     // Push to the recipient (no-op if their room is empty / offline).
     io.to(`user:${to}`).emit('message:new', msg);
 
     // Confirm to the sender; the sender renders its own bubble from this ack.
     ack({ ok: true, message: msg });
 
-    // Log a short preview of the text (first 40 chars).
-    const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
+    // Log only metadata, never the message text itself: the log is sent to
+    // every connected tab, so logging content would leak private messages.
     log(
       'msg',
-      `Message #${msg.id} "${from}" → "${to}" (${recipient.online ? 'delivered' : 'stored, recipient offline'}): "${preview}"`
+      `Message #${msg.id} "${from}" → "${to}" (${recipient.online ? 'delivered' : 'stored, recipient offline'}), ${text.length} chars`
     );
   });
 

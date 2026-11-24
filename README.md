@@ -7,11 +7,11 @@ On the right side of the page there's a log panel that shows what the server is 
 ## What it does
 
 Server:
-- Users join with just a name. If you come back with the same name later, you get your old messages back.
+- Users join with just a name. If you come back later from the same browser, you get your old messages back. Someone else can't take your name while you're offline, because logging back in needs a token only your browser has.
 - Private one-to-one messages. If the other person is offline, the message is kept and they'll see it when they come back.
 - Typing indicator, sent only to the person you're chatting with.
 - Online / offline / last seen for everyone.
-- Every event is printed in the terminal and also sent to the log panel in the browser.
+- Every event is printed in the terminal and also sent to the log panel in the browser. Message text is never logged, just who sent it to whom and how long it was.
 
 Client:
 - Login screen, contact list, chat window.
@@ -88,8 +88,8 @@ Client to server:
 
 | Event          | Payload            | Reply                                                | What it does                           |
 |----------------|--------------------|------------------------------------------------------|----------------------------------------|
-| `register`     | `{ name }`         | `{ ok, me, users, history }` or `{ ok:false, error }` | Join or log back in. Once per socket.  |
-| `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | Send a private message.                |
+| `register`     | `{ name, token? }` | `{ ok, me, token, users, history }` or `{ ok:false, error }` | Join or log back in. Once per socket. Token needed to log back in. |
+| `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | Send a private message (not to yourself). |
 | `typing`       | `{ to, isTyping }` | none                                                 | Started / stopped typing.              |
 
 Server to client:
@@ -108,8 +108,9 @@ Log levels: `info`, `success`, `warn`, `error`, `msg`, `typing` from the server,
 
 ## Things to know
 
-- Everything is in memory. Restart the server and it's all gone.
-- No passwords. Your name is your identity, so anyone can take a name that's currently offline.
+- Everything is in memory. Restart the server and it's all gone, including tokens, so names are free again.
+- No passwords. The token lives in your browser's localStorage. Clear it or use another browser and you can't get back into that name until the server restarts.
+- Only the last 1000 messages are kept.
 - One tab per name at a time.
 - On screens narrower than 1000px the log panel is hidden.
 

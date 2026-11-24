@@ -27,7 +27,7 @@
   const typingTimers = new Map();  // name -> safety timeout that clears "typing…"
 
   // Prefill the login box with the last name used in this tab (if any).
-  $('nameInput').value = sessionStorage.getItem('streamchat:name') || '';
+  try { $('nameInput').value = sessionStorage.getItem('streamchat:name') || ''; } catch { /* storage blocked */ }
 
   // -------------------------------------------------------------------------
   // Helpers
@@ -68,6 +68,8 @@
 
   // Creates an element with optional class and text.
   // Uses textContent (never innerHTML) so user text can't inject HTML.
+  // Every piece of user data (names, messages, log text) goes through here
+  // or through document.createTextNode, so it's always shown as plain text.
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -102,7 +104,7 @@
   const clientLog = (text) => addLog({ time: Date.now(), level: 'client', text });
 
   // "clear" link empties the panel (local only); ⌘ button shows/hides it.
-  $('clearLogs').onclick = () => (logList.innerHTML = '');
+  $('clearLogs').onclick = () => logList.replaceChildren();
   $('toggleLogs').onclick = () => $('app').classList.toggle('no-logs');
 
   // =========================================================================
@@ -122,7 +124,7 @@
   function renderContacts() {
     const q = $('search').value.trim().toLowerCase();
     const list = $('contacts');
-    list.innerHTML = '';
+    list.replaceChildren();
 
     // Filter out myself and apply the search box, then sort:
     // online first, then most recent conversation, then alphabetically.
@@ -218,7 +220,7 @@
   // Full re-render of the message area for the active peer.
   function renderMessages() {
     const box = $('messages');
-    box.innerHTML = '';
+    box.replaceChildren();
     const conv = conversations.get(activePeer) || [];
     if (!conv.length) box.append(el('div', 'day-sep', 'No messages yet. Say hi 👋'));
     for (const m of conv) box.append(bubble(m));
@@ -321,14 +323,38 @@
   // Component: Login
   // =========================================================================
 
-  // Calls the server's `register` hub method. On success it loads the contact
-  // list and chat history from the ack, then switches from login to the app.
+  // ---- Session token storage ----
+  // The server gives each name a secret token the first time it's
+  // registered. We keep it in localStorage under "streamchat:token:<name>"
+  // and send it on every register, so only this browser can log back in
+  // with that name. Storage can throw (private mode, disabled storage),
+  // so every access is wrapped in try/catch and failures are ignored.
+  const tokenKey = (name) => `streamchat:token:${name}`;
+
+  // Same cleanup the server does on names (trim, single spaces, 24 chars),
+  // so the storage key matches the name the server actually uses.
+  const normName = (raw) => String(raw || '').trim().replace(/\s+/g, ' ').slice(0, 24);
+
+  function loadToken(name) {
+    try { return localStorage.getItem(tokenKey(normName(name))) || undefined; }
+    catch { return undefined; }
+  }
+
+  function saveToken(name, token) {
+    if (!token) return;
+    try { localStorage.setItem(tokenKey(name), token); } catch { /* ignore */ }
+  }
+
+  // Calls the server's `register` hub method (with our saved token, if any).
+  // On success it saves the token, loads the contact list and chat history
+  // from the ack, then switches from login to the app.
   // `onDone(error|null)` reports the result back to the caller.
   function register(name, onDone) {
-    socket.emit('register', { name }, (res) => {
+    socket.emit('register', { name, token: loadToken(name) }, (res) => {
       if (!res.ok) return onDone && onDone(res.error);
       me = res.me;
-      sessionStorage.setItem('streamchat:name', me);
+      saveToken(me, res.token);
+      try { sessionStorage.setItem('streamchat:name', me); } catch { /* ignore */ }
 
       // Replace local contacts with the server's list.
       contacts.clear();
@@ -388,7 +414,7 @@
 
   // Log history (sent once on connect) and live log entries.
   socket.on('server:logs', (entries) => {
-    logList.innerHTML = '';
+    logList.replaceChildren();
     entries.forEach(addLog);
   });
   socket.on('server:log', addLog);

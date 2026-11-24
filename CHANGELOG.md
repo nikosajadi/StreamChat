@@ -1,9 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-11-24)
 
-- Added `docs/TESTING.md` with the manual tests I run after changes.
+Added:
+- Each name now gets a secret token (`crypto.randomUUID()`) the first time it registers. The browser keeps it in localStorage under `streamchat:token:<name>` and sends it on every register. Coming back to an offline name without the right token gets "This name is already taken." so people can't pretend to be someone else. The token is only ever sent back to its owner, never broadcast.
+- Messages array is capped at 1000 (`MESSAGE_LIMIT`). Oldest ones are dropped first, same as the log buffer.
+- `docs/TESTING.md` with the manual tests I run after changes.
+
+Changed:
+- Message log lines no longer include the text. They only show id, from, to, delivered/stored and length (like "34 chars"). The log goes to every tab, so the old preview leaked private messages to everyone.
+- The client no longer uses `innerHTML` at all, not even to clear lists. It uses `replaceChildren()`. User data was already shown with `textContent`.
 - Rewrote README, ARCHITECTURE and this file in plainer wording.
+
+Fixed:
+- You could send a message to yourself through the socket. Now the server replies "You cannot message yourself."
 
 ## 1.0.2 (2026-11-24)
 
