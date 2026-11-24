@@ -115,7 +115,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and sequenc
 
 | Event          | Payload              | Ack response                                          | Description                         |
 |----------------|----------------------|-------------------------------------------------------|-------------------------------------|
-| `register`     | `{ name }`           | `{ ok, me, users, history }` or `{ ok:false, error }` | Register a new user or log back in. |
+| `register`     | `{ name }`           | `{ ok, me, users, history }` or `{ ok:false, error }` | Register a new user or log back in (once per socket). |
 | `message:send` | `{ to, text }`       | `{ ok, message }` or `{ ok:false, error }`            | Send a private message.             |
 | `typing`       | `{ to, isTyping }`   | —                                                     | Start / stop typing indicator.      |
 

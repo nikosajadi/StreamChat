@@ -87,7 +87,12 @@ Client A                         Server                               Others
    │                               │ ── server:log (to everyone) ──────▶ │
 ```
 
-Rejected cases: empty name, or the name is already online.
+Rejected cases:
+- the socket is **already registered** (one identity per socket — prevents a stale identity staying online and a socket remaining in another user's room);
+- empty name;
+- the name is already online.
+
+A reconnect is not affected by the first rule because Socket.IO always creates a new socket on reconnect.
 
 ### 5.2 Sending a message
 

@@ -154,7 +154,18 @@ io.on('connection', (socket) => {
   // - Known, offline   -> logs the user back in (keeps their history).
   // - Known, online    -> rejected (names are unique while online).
   // In both success cases `user:online` is broadcast to everyone else.
+  // A socket can register only ONCE; a second `register` is rejected.
   socket.on('register', (payload, ack = () => {}) => {
+    // Guard: this socket already has an identity. Allowing a second register
+    // would overwrite socket.data.name, so the first user would never be
+    // marked offline on disconnect and the socket would stay in the first
+    // user's room (still receiving their messages). Reconnects are not
+    // affected — a reconnect always uses a brand-new socket.
+    if (socket.data.name) {
+      log('warn', `Registration rejected: socket ${socket.id} is already registered as "${socket.data.name}"`);
+      return ack({ ok: false, error: 'Already registered.' });
+    }
+
     const name = cleanName(payload && payload.name);
 
     // Validation: name must not be empty after cleaning.
