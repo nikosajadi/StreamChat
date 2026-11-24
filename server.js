@@ -121,6 +121,15 @@ function onlineCount() {
   return [...users.values()].filter((u) => u.online).length;
 }
 
+// Returns a safe acknowledgement callback.
+// Socket.IO passes whatever the client sent as the last argument, so `ack`
+// may be a number, string, object, or missing. A default parameter
+// (`ack = () => {}`) only covers `undefined`; calling a non-function would
+// throw. This always returns something callable.
+function toAck(ack) {
+  return typeof ack === 'function' ? ack : () => {};
+}
+
 // ===========================================================================
 // Socket.IO hub
 // ---------------------------------------------------------------------------
@@ -155,7 +164,10 @@ io.on('connection', (socket) => {
   // - Known, online    -> rejected (names are unique while online).
   // In both success cases `user:online` is broadcast to everyone else.
   // A socket can register only ONCE; a second `register` is rejected.
-  socket.on('register', (payload, ack = () => {}) => {
+  socket.on('register', (payload, rawAck) => {
+    // Always callable, even if the client sent a non-function (see toAck).
+    const ack = toAck(rawAck);
+
     // Guard: this socket already has an identity. Allowing a second register
     // would overwrite socket.data.name, so the first user would never be
     // marked offline on disconnect and the socket would stay in the first
@@ -201,6 +213,10 @@ io.on('connection', (socket) => {
     // Remember the name on the socket so later events know who sent them.
     socket.data.name = name;
 
+    // Names of users this socket is currently "typing to". Used on
+    // disconnect to send a final `typing:false` so no indicator gets stuck.
+    socket.data.typingTo = new Set();
+
     // Join a personal room "user:<name>". Messages and typing events are sent
     // to this room, so delivery doesn't depend on a specific socket id.
     socket.join(`user:${name}`);
@@ -229,7 +245,10 @@ io.on('connection', (socket) => {
   // Stores the message and pushes `message:new` to the recipient's room.
   // If the recipient is offline the message is still stored and will be
   // returned in their history the next time they log in.
-  socket.on('message:send', (payload, ack = () => {}) => {
+  socket.on('message:send', (payload, rawAck) => {
+    // Always callable, even if the client sent a non-function (see toAck).
+    const ack = toAck(rawAck);
+
     const from = socket.data.name;
     const to = cleanName(payload && payload.to);
     const text = String((payload && payload.text) || '').trim().slice(0, 2000); // max 2000 chars
@@ -272,6 +291,8 @@ io.on('connection', (socket) => {
   // Forwards `typing { from, isTyping }` to the recipient only.
   // The client sends isTyping=true once when typing starts and isTyping=false
   // after ~1.5s of inactivity, on blur, or when the message is sent.
+  // The server remembers open "typing" states per socket so it can close
+  // them itself if the socket disconnects mid-typing.
   socket.on('typing', (payload) => {
     const from = socket.data.name;
     const to = cleanName(payload && payload.to);
@@ -279,6 +300,10 @@ io.on('connection', (socket) => {
 
     // Ignore events from unregistered sockets or to unknown users.
     if (!from || !users.has(to)) return;
+
+    // Track the open typing state for this socket (see disconnect handler).
+    if (isTyping) socket.data.typingTo.add(to);
+    else socket.data.typingTo.delete(to);
 
     io.to(`user:${to}`).emit('typing', { from, isTyping });
     log('typing', `"${from}" ${isTyping ? 'started' : 'stopped'} typing to "${to}"`);
@@ -288,13 +313,22 @@ io.on('connection', (socket) => {
   // Lifecycle: disconnect
   // -------------------------------------------------------------------------
   // Fired when the tab closes, the network drops, or the server shuts down.
-  // Marks the user offline and broadcasts `user:offline` to everyone.
+  // 1. Closes any "typing" indicator this socket left open.
+  // 2. Marks the user offline and broadcasts `user:offline` to everyone.
   socket.on('disconnect', (reason) => {
     const name = socket.data.name;
     log('info', `Socket disconnected: id=${socket.id} reason=${reason}`);
 
     // Socket never registered -> nothing else to update.
     if (!name) return;
+
+    // The user may have closed the tab while typing — the client never got
+    // to send `isTyping:false`. Send it on their behalf to every recipient.
+    for (const to of socket.data.typingTo) {
+      io.to(`user:${to}`).emit('typing', { from: name, isTyping: false });
+      log('typing', `"${name}" stopped typing to "${to}" (disconnected)`);
+    }
+    socket.data.typingTo.clear();
 
     // Only mark offline if THIS socket is still the user's active one
     // (protects against a stale socket disconnecting after a re-login).

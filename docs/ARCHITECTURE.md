@@ -111,11 +111,13 @@ If Alice is offline the message is stored with `delivered:false` and returned in
 
 - The client sends `typing {isTyping:true}` **once** when typing starts.
 - It sends `typing {isTyping:false}` after 1.5 s of inactivity, on blur, on empty input, or when the message is sent.
-- The receiver also clears the indicator after a 5 s safety timeout, or when a message from that user arrives.
+- The server records, per socket, which users it is currently typing to (`socket.data.typingTo`).
+- If the socket disconnects mid-typing, the server sends `typing {isTyping:false}` to each of those users itself.
+- The receiver also clears the indicator after a 5 s safety timeout, when a message from that user arrives, or on `user:offline`.
 
 ### 5.4 Disconnect
 
-When a socket disconnects, the server marks the user offline **only if** that socket is still the user's active socket (prevents a stale socket from overriding a fresh login), updates `lastSeen` and broadcasts `user:offline`.
+When a socket disconnects, the server first closes any open typing indicators for that socket (see 5.3), then marks the user offline **only if** that socket is still the user's active socket (prevents a stale socket from overriding a fresh login), updates `lastSeen` and broadcasts `user:offline`.
 
 ### 5.5 Reconnect
 
@@ -126,6 +128,7 @@ Socket.IO reconnects automatically. On `connect`, if the client was already logg
 - All user text is rendered with `textContent` (never `innerHTML`) to prevent HTML/script injection.
 - Names are trimmed, whitespace-collapsed and limited to 24 characters; messages to 2000 characters.
 - Socket ids are never sent to other clients.
+- Acknowledgement callbacks are wrapped with `toAck()`, so a client sending a non-function as the last argument cannot crash a handler.
 - There is no authentication — this is a simulator, not a production messenger.
 
 ## 7. Extending the project

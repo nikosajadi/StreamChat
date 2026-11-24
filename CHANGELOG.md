@@ -3,6 +3,12 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.2] — 2026-11-24
+
+### Fixed
+- **Stuck typing indicator:** if a user closed the tab while typing, the server never sent `isTyping: false`. The server now tracks open typing states per socket and sends `typing { isTyping: false }` to every affected recipient on `disconnect`.
+- **Possible crash on invalid ack:** the default `ack = () => {}` only covered `undefined`; a client sending a non-function as the last argument made `ack(...)` throw. Handlers now use a `toAck()` helper that always returns a callable function.
+
 ## [1.0.1] — 2026-11-24
 
 ### Fixed
