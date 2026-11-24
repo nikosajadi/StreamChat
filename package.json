@@ -1,0 +1,13 @@
+{
+  "name": "streamchat",
+  "version": "1.0.0",
+  "description": "Simple messenger simulator with Node.js + Socket.IO",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0"
+  }
+}
