@@ -1,0 +1,38 @@
+<!doctype html>
+<!--
+  StreamChat client entry page. React mounts into #root.
+  The small inline script sets the theme class BEFORE first paint so the
+  page doesn't flash the wrong theme (same logic as hooks/useTheme.ts).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>StreamChat</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c7 0 13 5 13 12s-5 14-13 14S3 23 3 15 9 3 16 3z' fill='%23C2562F'/%3E%3C/svg%3E" />
+
+    <!-- Fonts: Fraunces (serif headings/names), Inter (body), JetBrains Mono (technical text) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      (function () {
+        var theme = null;
+        try { theme = localStorage.getItem('streamchat:theme'); } catch (e) {}
+        if (theme !== 'paper' && theme !== 'night') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
+        }
+        if (theme === 'night') document.documentElement.classList.add('dark');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

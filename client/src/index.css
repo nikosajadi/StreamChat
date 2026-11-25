@@ -1,0 +1,105 @@
+/* ===========================================================================
+   Global styles + theme variables.
+   ---------------------------------------------------------------------------
+   The two themes only differ here. Every color is "R G B" so Tailwind can
+   add opacity (see tailwind.config.ts). Contrast was checked for WCAG AA:
+   ink and ink-muted on paper, and white on accent-deep (my bubbles).
+   =========================================================================== */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- "Paper" (light, default) ---------- */
+:root {
+  --paper: 244 239 230;      /* #F4EFE6 */
+  --paper-2: 234 226 212;    /* their bubbles, cards */
+  --paper-3: 224 214 197;    /* hover */
+  --ink: 31 27 22;           /* #1F1B16 */
+  --ink-muted: 94 85 74;     /* 6.4:1 on paper */
+  --accent: 194 86 47;       /* #C2562F terracotta */
+  --accent-deep: 176 75 40;  /* #B04B28, white text = 5.2:1 */
+  --indigo: 61 74 122;       /* #3D4A7A */
+  --sand: 214 190 150;
+  --danger: 164 58 58;
+  --online: 61 112 76;       /* 5:1 on paper, also used as text */
+  --accent-ink: 150 62 32;   /* terracotta for SMALL text, 6:1 on paper */
+  --grain-opacity: 0.07;
+  color-scheme: light;
+}
+
+/* ---------- "Night ink" (dark) ---------- */
+.dark {
+  --paper: 22 19 15;         /* #16130F */
+  --paper-2: 36 31 25;
+  --paper-3: 50 43 35;
+  --ink: 237 230 218;        /* paper-colored text */
+  --ink-muted: 170 160 145;  /* 7:1 on night */
+  --accent: 224 122 79;      /* brighter terracotta */
+  --accent-deep: 176 75 40;  /* bubbles keep the same deep tone + white text */
+  --indigo: 142 155 214;     /* brighter indigo */
+  --sand: 150 128 95;
+  --danger: 222 120 110;
+  --online: 120 190 140;
+  --accent-ink: 232 140 100; /* small accent text on night */
+  --grain-opacity: 0.05;
+  color-scheme: dark;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+
+  /* Paper grain: an inline SVG noise filter laid over the whole page.
+     Very low opacity, ignores the mouse. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 60;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .dark body::before { mix-blend-mode: screen; }
+
+  /* Visible focus for keyboard users everywhere. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection { background: rgb(var(--accent) / 0.25); }
+
+  /* Thin, quiet scrollbars. */
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--ink) / 0.18) transparent; }
+}
+
+@layer components {
+  /* Small uppercase letter-spaced label, like a magazine section head. */
+  .label {
+    @apply font-sans text-[11px] font-semibold uppercase tracking-label text-ink-muted;
+  }
+
+  /* A hairline rule between sections. */
+  .rule { @apply border-hair; }
+
+  /* Round icon button used in headers. */
+  .icon-btn {
+    @apply inline-grid h-9 w-9 place-items-center rounded-full text-ink-muted transition-colors hover:bg-paper-3 hover:text-ink disabled:opacity-40;
+  }
+}
+
+/* Users who ask for less motion get none of the CSS animations either. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

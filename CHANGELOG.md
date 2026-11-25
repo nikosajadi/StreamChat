@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 (2026-11-24)
+
+New React client. The server's events and payloads didn't change, so old clients still work against it.
+
+Added:
+- `client/`: a new front end with Vite, React 19, TypeScript (strict), Tailwind CSS, framer-motion, lucide-react and socket.io-client.
+- "Editorial paper" look: warm paper background with a faint grain, ink text, terracotta and indigo accents, Fraunces / Inter / JetBrains Mono. Two themes, "Paper" and "Night ink", following the system on first visit and remembered after that.
+- Blob avatars drawn from the user's name (same name, same avatar), and a generated watercolor-style chat background. Drop a `wallpaper.jpg` in `client/src/assets/art/` to use a picture instead.
+- Live Wire panel: the server in the middle and users around it, with dots moving sender → server → receiver for messages (terracotta) and typing (grey), rings for presence (indigo) and warnings (red). Event log under it, newest first, max 200, with filter chips and pause. With "reduce motion" nothing moves, the nodes just get highlighted.
+- Grouped bubbles, Today / Yesterday separators, unread counts, typing dots, emoji picker and big emoji.
+- Message box: Enter sends, Shift+Enter new line, grows with the text, send button disabled when empty.
+- Connection status (Connecting / Connected / Reconnecting / Offline), a banner and a disabled message box while disconnected.
+- Errors from the server show up as small toasts.
+- Reloading the page logs you back in if the tab has a saved name and token.
+- Layouts for desktop (3 columns), tablet (Live Wire slides in) and phone (separate screens, Live Wire as a bottom sheet).
+- Accessibility: visible focus, labels on icon buttons, skip link, screen reader announcements for new messages and typing, modal overlays that trap and return focus, colors checked for WCAG AA in both themes.
+- Root scripts: `dev:server`, `dev:client`, `client:install`, `build`, `start`.
+
+Changed:
+- `log()` in `server.js` takes an optional `meta` object (`type`, `from`, `to`, plus `online` / `isTyping`) and puts it on the log entry. Message, typing, register, online/offline, connect and disconnect logs pass it. No message text or tokens in it.
+- `server.js` now serves `client/dist` instead of `public/`. If the client isn't built yet, `/` says to run `npm run build`.
+- The old client moved from `public/` to `public-legacy/`. It's kept for reference and isn't served.
+- `client/dist/` is ignored by git.
+
+## 1.2.1 (2026-11-24)
 
 - Updated the comments at the top of `server.js`, `app.js` and `index.html` so they mention tokens, the message limit, no message text in logs, and the emoji picker.
 - Cleaned up comment wording, and the online/offline log lines now read like `User online: "Alice", online now: 2/3`.

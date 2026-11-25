@@ -1,10 +1,14 @@
 {
   "name": "streamchat",
-  "version": "1.2.0",
-  "description": "Simple messenger simulator with Node.js + Socket.IO",
+  "version": "2.0.0",
+  "description": "Small real-time messenger: Node.js + Socket.IO server with a React client",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev:server": "node server.js",
+    "dev:client": "npm --prefix client run dev",
+    "client:install": "npm --prefix client install",
+    "build": "npm --prefix client run build"
   },
   "dependencies": {
     "express": "^4.21.0",

@@ -4,15 +4,25 @@ Notes on how the pieces fit together: what the server keeps in memory, which eve
 
 ## The big picture
 
-It's one Node.js process doing two things:
+There are two parts:
 
-1. Express serves the files in `public/`.
-2. Socket.IO keeps a connection open to every tab and passes events between them.
+1. **Server** (`server.js`): one Node.js process. Socket.IO keeps a connection open to every tab and passes events between them. In production, Express also serves the built React client from `client/dist`.
+2. **Client** (`client/`): a React + TypeScript app built with Vite. In development Vite serves it on port 5173 and forwards `/socket.io` to the server, so the browser only ever talks to one address.
+
+```
+ Development                                   Production
+
+ browser ──▶ Vite :5173 ──/socket.io──▶ :3000   browser ──▶ server.js :3000
+             (React app,   proxy, ws too)                    ├─ Express static: client/dist
+              hot reload)                                    └─ Socket.IO
+```
+
+Inside the server:
 
 ```
                 ┌─────────────────────────── server.js ───────────────────────────┐
                 │                                                                  │
- HTTP GET / ───▶│  Express static  ──▶  public/index.html, style.css, app.js       │
+ HTTP GET / ───▶│  Express static  ──▶  client/dist (built React app)              │
                 │                                                                  │
  WebSocket  ◀──▶│  Socket.IO                                                       │
                 │    ├─ register        ──▶ users Map                              │
@@ -20,28 +30,58 @@ It's one Node.js process doing two things:
                 │    ├─ typing          ──────────────────▶ room user:<to>         │
                 │    └─ disconnect      ──▶ users Map (offline)                    │
                 │                                                                  │
-                │  log()  ──▶ console  +  logBuffer  +  io.emit('server:log')      │
+                │  log(level, text, meta) ──▶ console + logBuffer + server:log     │
                 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Server (server.js)
 
-- Setup: Express app, HTTP server and Socket.IO on the same port.
+- Setup: Express app, HTTP server and Socket.IO on the same port. Serves `client/dist` if it exists, otherwise `/` says to run the build.
 - State: `users` (a Map by name), `messages` (last 1000 messages), `logBuffer` (last 300 log lines).
-- `log()`: the one place everything gets logged. Prints a colored line in the terminal, saves it in the buffer and sends it to every tab.
+- `log(level, text, meta?)`: the one place everything gets logged. Prints a colored line in the terminal, saves it in the buffer and sends it to every tab. `meta` tells clients what the line is about (see below).
 - Small helpers: `publicUser`, `userList`, `historyFor`, `cleanName`, `onlineCount`, `toAck`.
 - Socket handlers: `register`, `message:send`, `typing`, `disconnect`.
 
-## Client (public/app.js)
+## Client (client/src)
 
-- Log panel: shows log lines from the server plus a few of its own (`client` level). Only auto-scrolls if you're already at the bottom.
-- Contact list: sorting, search, online dots, last message, unread count, "typing…".
-- Chat: header with status, message bubbles, the three-dot typing bubble.
-- Input box: sends messages and the typing start/stop events.
-- Emoji picker: the smiley button opens a panel built once from a list in `app.js` (`EMOJI_GROUPS`). Clicking an emoji inserts it at the cursor and fires a normal `input` event, so the typing indicator works the same as with the keyboard. Emoji buttons use `mousedown` + `preventDefault` so the message box keeps focus.
-- Big emoji: `isBigEmoji()` checks if a message is only emoji and at most 3 of them (counted with `Intl.Segmenter`, so things like ❤️ count as one). Those bubbles get the `big-emoji` class.
-- Login: calls `register`, loads contacts and old messages, switches screens.
-- Socket listeners for everything the server sends. Logs back in by itself after a reconnect.
+How the code is split:
+
+- `lib/socket.ts`: creates the one socket for the whole app and has the TypeScript types for every event (`ServerToClientEvents`, `ClientToServerEvents`), matching `server.js`. Also the token helpers (`loadToken`, `saveToken`) and a small buffer of log lines that arrive before React has mounted.
+- `hooks/useChat.ts`: a reducer with users, conversations, unread counts, who's typing, and the open chat. Has `register`, `sendMessage`, `setTyping` and `openChat`. Logs back in by itself after a reconnect.
+- `hooks/useConnection.ts`: Connecting / Connected / Reconnecting / Offline, from the socket's own events and the browser's online/offline events.
+- `hooks/useLiveWire.ts`: keeps the event log (newest first, max 200), the filter, pause, and a short-lived list of animations for the diagram.
+- `hooks/useTheme.ts`: Paper or Night ink. First visit follows the system, after that the saved choice wins.
+- `components/`: grouped by area (`auth`, `contacts`, `chat`, `livewire`, `ui`). They get data as props and don't touch the socket directly.
+
+Design tokens (colors, fonts, radii) are defined once: CSS variables for both themes in `src/index.css`, and names for them in `tailwind.config.ts`. Components only use those names. Small accent text uses `accent-ink`, a darker terracotta, so it passes WCAG AA.
+
+### Layout
+
+- Desktop (1024px and up): contacts | chat | Live Wire, and Live Wire can be closed.
+- Tablet (768 to 1023px): contacts | chat. Live Wire slides in from the right.
+- Phone (under 768px): contacts and chat are separate screens with a back button. Live Wire is a bottom sheet.
+
+The overlays are modal: focus goes in, Escape or the backdrop closes them, and focus goes back to the button.
+
+### Live Wire
+
+The server's log lines carry `meta`, so the client doesn't have to read the text:
+
+| `meta.type` | Sent for | What the diagram does |
+|-------------|----------|------------------------|
+| `message`   | a message was sent (`from`, `to`) | terracotta dot: sender → server → receiver |
+| `typing`    | typing started or stopped (`from`, `to`, `isTyping`) | smaller grey dot along the same path |
+| `register`  | new user or logged back in (`from`) | indigo ring on that user |
+| `presence`  | came online / went offline (`from`, `online`) | indigo ring on that user |
+| `system`    | socket connect/disconnect, server start | small ring on the server |
+
+Lines without `meta` (like a rejected register) count as System, and warnings show in muted red. Users are placed on an ellipse around the server in name order, and offline ones are faded. With "reduce motion" turned on, nothing moves: the nodes involved just get a colored ring for a moment.
+
+The log list under the diagram can be filtered and paused. Pausing only freezes the list. New lines are held back and counted, and the diagram keeps moving.
+
+### Avatars and background
+
+Both are generated in code (`lib/art.ts`). A name is hashed into a seed, and the seed drives a small random generator. So the same name always gets the same blob shape and colors, and the chat background always looks the same. The background can be swapped for a picture by adding `client/src/assets/art/wallpaper.jpg`.
 
 ## What the data looks like
 
@@ -55,8 +95,9 @@ It's one Node.js process doing two things:
 // message
 { id, from, to, text, time, delivered }
 
-// log line
-{ time, level /* info|success|warn|error|msg|typing */, text }
+// log line (meta is optional, never has message text or tokens)
+{ time, level /* info|success|warn|error|msg|typing */, text,
+  meta?: { type /* message|typing|presence|register|system */, from?, to?, online?, isTyping? } }
 ```
 
 ## Rooms
@@ -121,13 +162,13 @@ When a socket disconnects, the server first closes any typing indicators it left
 
 ### Reconnecting
 
-Socket.IO reconnects by itself. When it does, the page calls `register` again with the same name and puts back the contacts, messages and the chat you had open.
+Socket.IO reconnects by itself. When it does, the page calls `register` again with the same name and token and puts back the contacts, messages and the chat you had open. Reloading the page does the same: the tab remembers its name in sessionStorage, and if the token is there it logs back in without asking.
 
 ## Safety stuff
 
-- User text is always put on the page with `textContent` or `createTextNode`. The client doesn't use `innerHTML` anywhere, so nobody can inject HTML or scripts. Escaping happens in the browser when rendering, not on the server.
+- All user text is rendered as normal React text, which React escapes. The client never uses `dangerouslySetInnerHTML` (or `innerHTML`), so nobody can inject HTML or scripts. Escaping happens in the browser when rendering, not on the server.
 - Names can't be taken over while their owner is offline, thanks to the token.
-- Message text never shows up in the log.
+- Message text never shows up in the log or in `meta`, and neither do tokens.
 - Names are trimmed and cut to 24 characters. Messages are cut to 2000.
 - Socket ids are never sent to other users.
 - Reply callbacks go through `toAck()`, so a client sending junk instead of a function can't crash the server.

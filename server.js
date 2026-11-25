@@ -4,7 +4,8 @@
 // A small messenger simulator server built with Express + Socket.IO.
 //
 // What it does:
-//   1. Serves the client page from /public (HTML, CSS, JS).
+//   1. Serves the built React client from client/dist (run `npm run build`
+//      first). The old plain-JS client is kept in public-legacy/.
 //   2. Registers clients by name. Each new name gets a secret token, and
 //      logging back in to that name later needs the same token.
 //   3. Passes private messages between users in real time. Keeps the last
@@ -13,7 +14,9 @@
 //      typing user disconnects.
 //   5. Tracks online / offline and tells every client.
 //   6. Logs every server/socket event to the console AND to all connected
-//      tabs (the "Server & Socket Log" column). Message text is never logged.
+//      tabs (the "Live Wire" panel). Log entries carry a small `meta`
+//      object so clients don't have to parse text. Message text is never
+//      logged.
 //
 // All data is kept in memory. Restarting the server clears everything.
 // ===========================================================================
@@ -21,7 +24,8 @@
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
-const path = require('path');             // builds the absolute path to /public
+const fs = require('fs');                 // checks that client/dist exists
+const path = require('path');             // builds the absolute path to client/dist
 const crypto = require('crypto');         // randomUUID() for per-user session tokens
 const http = require('http');             // raw HTTP server that Socket.IO attaches to
 const express = require('express');       // serves the static client files
@@ -39,9 +43,31 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Everything inside /public (index.html, style.css, app.js) is served as-is.
-// Socket.IO also auto-serves its client library at /socket.io/socket.io.js.
-app.use(express.static(path.join(__dirname, 'public')));
+// The React client is built into client/dist (`npm run build`) and served
+// as static files. Socket.IO handles /socket.io/* itself on the same port.
+// During development you don't need this: Vite serves the client on :5173
+// and proxies /socket.io here.
+const CLIENT_DIST = path.join(__dirname, 'client', 'dist');
+const CLIENT_BUILT = fs.existsSync(path.join(CLIENT_DIST, 'index.html'));
+
+if (CLIENT_BUILT) {
+  app.use(express.static(CLIENT_DIST));
+} else {
+  // No build yet: say what to do instead of a blank 404.
+  app.get('/', (_req, res) => {
+    res
+      .status(503)
+      .type('text/plain')
+      .send(
+        [
+          'The client is not built yet.',
+          '',
+          'Run `npm run build` and restart the server,',
+          'or use `npm run dev` for development (http://localhost:5173).',
+        ].join('\n')
+      );
+  });
+}
 
 // ---------------------------------------------------------------------------
 // In-memory state
@@ -77,13 +103,20 @@ let msgSeq = 1;
 // Levels: info | success | warn | error | msg | typing
 const COLORS = { info: 36, success: 32, warn: 33, error: 31, msg: 35, typing: 90 };
 
-// log(level, text)
+// log(level, text, meta?)
 // Writes one event to three places:
 //   1. logBuffer: so tabs that connect later can see what happened before
 //   2. console:   colored line in the terminal running the server
 //   3. io.emit:   pushes the entry live to every connected tab
-function log(level, text) {
+//
+// `meta` is optional structured info about the event, so clients (the
+// Live Wire panel) don't have to parse the text:
+//   { type: 'message' | 'typing' | 'presence' | 'register' | 'system',
+//     from?, to?, online?, isTyping? }
+// Never put message text or tokens in meta: it goes to every tab.
+function log(level, text, meta) {
   const entry = { time: Date.now(), level, text };
+  if (meta) entry.meta = meta;
 
   // Keep the buffer bounded: drop the oldest entry once we exceed the limit.
   logBuffer.push(entry);
@@ -157,7 +190,7 @@ function toAck(ack) {
 io.on('connection', (socket) => {
   // A raw socket connected. It is NOT registered yet (no name).
   const ip = socket.handshake.address;
-  log('info', `Socket connected: id=${socket.id} ip=${ip}`);
+  log('info', `Socket connected: id=${socket.id} ip=${ip}`, { type: 'system' });
 
   // Send the recent log history so this panel isn't empty on load.
   socket.emit('server:logs', logBuffer);
@@ -255,12 +288,16 @@ io.on('connection', (socket) => {
     // Notify everyone else. `user:new` adds a contact; `user:online` flips
     // an existing contact's status dot to green.
     if (isNew) {
-      log('success', `New user registered: "${name}" (socket ${socket.id})`);
+      log('success', `New user registered: "${name}" (socket ${socket.id})`, { type: 'register', from: name });
       socket.broadcast.emit('user:new', publicUser(users.get(name)));
     } else {
-      log('success', `User logged back in: "${name}" (socket ${socket.id})`);
+      log('success', `User logged back in: "${name}" (socket ${socket.id})`, { type: 'register', from: name });
     }
-    log('info', `User online: "${name}", online now: ${onlineCount()}/${users.size}`);
+    log('info', `User online: "${name}", online now: ${onlineCount()}/${users.size}`, {
+      type: 'presence',
+      from: name,
+      online: true,
+    });
     socket.broadcast.emit('user:online', publicUser(users.get(name)));
   });
 
@@ -312,7 +349,8 @@ io.on('connection', (socket) => {
     // every connected tab, so logging content would leak private messages.
     log(
       'msg',
-      `Message #${msg.id} "${from}" → "${to}" (${recipient.online ? 'delivered' : 'stored, recipient offline'}), ${text.length} chars`
+      `Message #${msg.id} "${from}" → "${to}" (${recipient.online ? 'delivered' : 'stored, recipient offline'}), ${text.length} chars`,
+      { type: 'message', from, to }
     );
   });
 
@@ -338,7 +376,12 @@ io.on('connection', (socket) => {
     else socket.data.typingTo.delete(to);
 
     io.to(`user:${to}`).emit('typing', { from, isTyping });
-    log('typing', `"${from}" ${isTyping ? 'started' : 'stopped'} typing to "${to}"`);
+    log('typing', `"${from}" ${isTyping ? 'started' : 'stopped'} typing to "${to}"`, {
+      type: 'typing',
+      from,
+      to,
+      isTyping,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -349,7 +392,7 @@ io.on('connection', (socket) => {
   // 2. Marks the user offline and broadcasts `user:offline` to everyone.
   socket.on('disconnect', (reason) => {
     const name = socket.data.name;
-    log('info', `Socket disconnected: id=${socket.id} reason=${reason}`);
+    log('info', `Socket disconnected: id=${socket.id} reason=${reason}`, { type: 'system' });
 
     // Socket never registered -> nothing else to update.
     if (!name) return;
@@ -358,7 +401,12 @@ io.on('connection', (socket) => {
     // to send `isTyping:false`. Send it on their behalf to every recipient.
     for (const to of socket.data.typingTo) {
       io.to(`user:${to}`).emit('typing', { from: name, isTyping: false });
-      log('typing', `"${name}" stopped typing to "${to}" (disconnected)`);
+      log('typing', `"${name}" stopped typing to "${to}" (disconnected)`, {
+        type: 'typing',
+        from: name,
+        to,
+        isTyping: false,
+      });
     }
     socket.data.typingTo.clear();
 
@@ -370,7 +418,11 @@ io.on('connection', (socket) => {
       u.socketId = null;
       u.lastSeen = Date.now();
       io.emit('user:offline', publicUser(u));
-      log('warn', `User offline: "${name}", online now: ${onlineCount()}/${users.size}`);
+      log('warn', `User offline: "${name}", online now: ${onlineCount()}/${users.size}`, {
+        type: 'presence',
+        from: name,
+        online: false,
+      });
     }
   });
 });
@@ -379,5 +431,10 @@ io.on('connection', (socket) => {
 // Start listening
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
-  log('success', `StreamChat server listening on http://localhost:${PORT}`);
+  log('success', `StreamChat server listening on http://localhost:${PORT}`, { type: 'system' });
+  if (!CLIENT_BUILT) {
+    log('warn', 'client/dist not found: run `npm run build` to serve the React client from this port', {
+      type: 'system',
+    });
+  }
 });

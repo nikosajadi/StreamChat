@@ -1,128 +1,157 @@
 # StreamChat
 
-A small messenger I built to play with Socket.IO. There's a Node.js server that keeps track of who's online and passes messages around, and a simple dark-themed web page that works like a chat app.
+A small chat app I made to learn Socket.IO.
 
-On the right side of the page there's a log panel that shows what the server is doing in real time (who connected, who's typing, who sent what), which is handy for seeing how the events flow.
+There's a Node.js server and a React front end. You pick a name, you see who else is online, and you can send private messages. You can see when someone is typing and when people come and go.
 
-## What it does
+On the right there's a panel called Live Wire. It shows the server in the middle and the users around it, and every time a message or a typing event goes through the server you see a little dot move. Under it is a list of everything the server did. I added it because I wanted to actually see the events, not just read about them.
 
-Server:
-- Users join with just a name. If you come back later from the same browser, you get your old messages back. Someone else can't take your name while you're offline, because logging back in needs a token only your browser has.
-- Private one-to-one messages. If the other person is offline, the message is kept and they'll see it when they come back.
-- Typing indicator, sent only to the person you're chatting with.
-- Online / offline / last seen for everyone.
-- Every event is printed in the terminal and also sent to the log panel in the browser. Message text is never logged, just who sent it to whom and how long it was.
+## What you can do
 
-Client:
-- Login screen, contact list, chat window.
-- Green dot for online users, "last seen" for offline ones.
-- Last message preview, unread count, and search in the contact list.
-- New users show up in the list right away.
-- "typing…" under the name and three dots in the chat.
-- Emoji button next to the message box. Pick emoji from a small panel and send them. A message that's only 1 to 3 emoji shows up big.
-- Log panel you can hide with the ⌘ button.
-- If the connection drops or the server restarts, the page logs you back in by itself.
+- Join with just a name. No password.
+- See everyone else. Online people are at the top, offline people show "last seen".
+- Send private messages. If the other person is offline, they get it when they come back.
+- See "typing…" when someone is writing to you.
+- Unread counts, search, emoji.
+- Light and dark theme (the moon/sun button at the top).
+- Works on a phone too. Contacts and chat become two screens.
+- If the page reloads or the connection drops, you get logged back in.
 
-## Stack
+## What it's made with
 
-- Node.js (I used v20, v18+ should be fine)
-- Express 4 for serving the page
-- Socket.IO 4 for the real-time part
-- Plain HTML, CSS and JS on the client, no build step
-- No database, everything lives in memory
+- Server: Node.js, Express, Socket.IO
+- Front end: React, TypeScript, Vite, Tailwind CSS, framer-motion (animations), lucide-react (icons)
+- No database. Everything is kept in memory, so restarting the server clears it.
 
-## Running it
+I used Node 20.
+
+## How to run it
+
+You need Node.js installed. Then, in the project folder:
+
+### 1. Install (only the first time)
 
 ```bash
 npm install
+npm run client:install
+```
+
+The first one is for the server, the second one is for the React app in `client/`.
+
+### 2. Run it
+
+There are two ways.
+
+**Normal way** (one terminal):
+
+```bash
+npm run build
 npm start
 ```
 
-Then go to http://localhost:3000.
+`npm run build` makes the React app. `npm start` starts the server. Open http://localhost:3000.
 
-Open it in two or more tabs (or two browsers) and join with different names to chat between them.
+You only need to run `npm run build` again if you change the React code.
 
-To use another port:
+**While working on the code** (two terminals):
 
 ```bash
-PORT=4000 npm start            # macOS / Linux
-$env:PORT=4000; npm start      # Windows PowerShell
+npm run dev:server
 ```
 
-## How to use
+```bash
+npm run dev:client
+```
 
-1. Type a name and hit Join.
-2. Other users show up on the left. Green dot means online.
-3. Click someone, type, hit Enter.
-4. While you type, they see "typing…".
-5. Click the smiley next to the message box to add emoji.
-6. Close a tab and that user goes offline for everyone else.
-7. Watch the log panel on the right to see what's going on.
+Open http://localhost:5173. Changes in the React code show up right away, no build needed.
 
-## Files
+### 3. Try it
+
+Open the page in two tabs (or two browsers), join with two different names, and talk to yourself.
+
+### If something doesn't work
+
+- **Page doesn't open:** the server probably isn't running. Run `npm start` again.
+- **"The client is not built yet":** run `npm run build`, then `npm start`.
+- **`EADDRINUSE` error:** something is already using port 3000, probably another copy of the server. Close it (Ctrl+C in its terminal), or use another port: `PORT=4000 npm start` (Windows PowerShell: `$env:PORT=4000; npm start`).
+- **"This name is already taken":** someone used that name before from another browser. Pick another name, or restart the server to free all names.
+
+## Folders
 
 ```
 StreamChat/
-├── server.js            server: state, socket events, logging
-├── package.json
-├── public/
-│   ├── index.html       page layout
-│   ├── style.css        dark theme
-│   └── app.js           client logic
+├── server.js          the server
+├── package.json       scripts: start, build, dev:server, dev:client
+├── client/            the React app
+│   └── src/
+│       ├── App.tsx        the page layout
+│       ├── index.css      colors for light and dark
+│       ├── lib/           connection to the server, helpers
+│       ├── hooks/         chat logic, connection status, Live Wire, theme
+│       ├── components/    the pieces of the page
+│       └── assets/art/    put a wallpaper.jpg here to change the chat background
+├── public-legacy/     the first version of the front end (plain HTML/JS), not used anymore
 ├── docs/
-│   ├── ARCHITECTURE.md  how it works under the hood
-│   └── TESTING.md       manual tests to run after changes
-├── CHANGELOG.md
-└── README.md
+│   ├── ARCHITECTURE.md    how it works inside
+│   └── TESTING.md         things to check by hand after a change
+└── CHANGELOG.md       what changed in each version
 ```
 
-## How it works (short version)
+## Changing the chat background
 
-Every tab opens a socket to the server. When you register, your socket joins a room called `user:<your name>`. Messages and typing events for you get sent to that room. The server keeps users, messages and the last 300 log lines in memory.
+The background behind the messages is drawn by code. If you want a picture instead, save it as `client/src/assets/art/wallpaper.jpg` and rebuild. It's shown very faded so the text stays readable. Delete the file to get the drawn one back.
 
-A message you send only shows up on your side after the server confirms it, so what you see is what was actually saved.
+## How it works, short version
 
-More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Each browser tab opens one connection to the server. When you join, the server puts your connection in a room with your name. Messages and typing for you go to that room.
+
+The first time you use a name, the server gives your browser a secret token, saved in localStorage. To use that name again later, the browser has to send the same token. That's how nobody else can take your name while you're away.
+
+The server never logs what a message says, only who sent it to whom and how long it was.
+
+More details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Socket events
 
-Client to server:
+These are the messages that go between the browser and the server. The types for them are in `client/src/lib/socket.ts`.
 
-| Event          | Payload            | Reply                                                | What it does                           |
-|----------------|--------------------|------------------------------------------------------|----------------------------------------|
-| `register`     | `{ name, token? }` | `{ ok, me, token, users, history }` or `{ ok:false, error }` | Join or log back in. Once per socket. Token needed to log back in. |
-| `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | Send a private message (not to yourself). |
-| `typing`       | `{ to, isTyping }` | none                                                 | Started / stopped typing.              |
+Browser to server:
 
-Server to client:
+| Event          | Sends              | Gets back                                            | What for                    |
+|----------------|--------------------|------------------------------------------------------|-----------------------------|
+| `register`     | `{ name, token? }` | `{ ok, me, token, users, history }` or `{ ok:false, error }` | join, or log back in    |
+| `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | send a message              |
+| `typing`       | `{ to, isTyping }` | nothing                                              | started / stopped typing    |
 
-| Event          | Payload                                   | Who gets it              | What it means                  |
-|----------------|-------------------------------------------|--------------------------|--------------------------------|
-| `server:logs`  | list of log entries                       | the tab that just connected | Recent log history.         |
-| `server:log`   | `{ time, level, text }`                   | everyone                 | One new log line.              |
-| `user:new`     | `{ name, online, lastSeen }`              | everyone but the new user | Someone new joined.           |
-| `user:online`  | `{ name, online, lastSeen }`              | everyone but that user   | Someone came online.           |
-| `user:offline` | `{ name, online, lastSeen }`              | everyone                 | Someone went offline.          |
-| `message:new`  | `{ id, from, to, text, time, delivered }` | the receiver             | New message for you.           |
-| `typing`       | `{ from, isTyping }`                      | the receiver             | Someone is (or stopped) typing to you. |
+Server to browser:
 
-Log levels: `info`, `success`, `warn`, `error`, `msg`, `typing` from the server, and `client` for things only your own tab logs.
+| Event          | Sends                                     | Goes to             | Means                        |
+|----------------|-------------------------------------------|---------------------|------------------------------|
+| `server:logs`  | list of log lines                         | the tab that just connected | what happened so far |
+| `server:log`   | `{ time, level, text, meta? }`            | everyone            | something just happened      |
+| `user:new`     | `{ name, online, lastSeen }`              | everyone else       | a new person joined          |
+| `user:online`  | `{ name, online, lastSeen }`              | everyone else       | someone came online          |
+| `user:offline` | `{ name, online, lastSeen }`              | everyone            | someone left                 |
+| `message:new`  | `{ id, from, to, text, time, delivered }` | the person it's for | you got a message            |
+| `typing`       | `{ from, isTyping }`                      | the person it's for | someone is typing to you     |
 
-## Things to know
+`meta` on a log line says what it was about: `type` (message, typing, presence, register or system) and who (`from`, `to`). Live Wire uses it to draw the dots.
 
-- Everything is in memory. Restart the server and it's all gone, including tokens, so names are free again.
-- No passwords. The token lives in your browser's localStorage. Clear it or use another browser and you can't get back into that name until the server restarts.
+## Good to know
+
+- Restarting the server deletes all users and messages.
 - Only the last 1000 messages are kept.
 - One tab per name at a time.
-- On screens narrower than 1000px the log panel is hidden.
+- Live Wire shows everyone who is talking to whom (never the text). Fine for a demo, but you wouldn't do that in a real messenger.
+- Fonts come from Google Fonts, so the page needs internet for them.
 
-## Ideas for later
+## Maybe later
 
-- [ ] Save users and messages in a database (SQLite or MongoDB)
-- [ ] Seen / delivered ticks
+- [ ] Save things in a database
+- [ ] Read receipts
 - [ ] Group chats
-- [ ] Login with a password
-- [ ] Better layout on phones
+- [ ] Real login with a password
+- [ ] Automatic tests
 
 ## Changes
 

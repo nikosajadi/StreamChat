@@ -14,3 +14,6 @@ npm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Client build output
+client/dist/
