@@ -2,6 +2,10 @@
 
 A small chat app I made to learn Socket.IO.
 
+**Try it here: https://streamchat-5krx.onrender.com**
+
+Open it in two tabs (or send it to a friend), join with two different names and send a message. It's on a free server, so if nobody used it for a while the first load can take about a minute.
+
 There's a Node.js server and a React front end. You pick a name, you see who else is online, and you can send private messages. You can see when someone is typing and when people come and go.
 
 On the right there's a panel called Live Wire. It shows the server in the middle and the users around it, and every time a message or a typing event goes through the server you see a little dot move. Under it is a list of everything the server did. I added it because I wanted to actually see the events, not just read about them.
