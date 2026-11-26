@@ -10,7 +10,7 @@ There are two parts:
 2. **Client** (`client/`): a React + TypeScript app built with Vite. In development Vite serves it on port 5173 and forwards `/socket.io` to the server, so the browser only ever talks to one address.
 
 ```
- Development                                   Production
+ Development                                   Production (your machine, or Render)
 
  browser ──▶ Vite :5173 ──/socket.io──▶ :3000   browser ──▶ server.js :3000
              (React app,   proxy, ws too)                    ├─ Express static: client/dist
@@ -38,7 +38,7 @@ Inside the server:
 ## Server (server.js)
 
 - Setup: Express app, HTTP server and Socket.IO on the same port. Serves `client/dist` if it exists, otherwise `/` says to run the build.
-- State: `users` (a Map by name), `messages` (last 1000 messages), `logBuffer` (last 300 log lines).
+- State: `users` (a Map by name, at most `MAX_USERS` = 200), `messages` (last 1000 messages), `logBuffer` (last 300 log lines). Everything has a limit so a public server can't be filled up.
 - `log(level, text, meta?)`: the one place everything gets logged. Prints a colored line in the terminal, saves it in the buffer and sends it to every tab. `meta` tells clients what the line is about (see below).
 - Small helpers: `publicUser`, `userList`, `historyFor`, `cleanName`, `onlineCount`, `setStatus`, `toAck`.
 - Socket handlers: `register`, `message:send`, `message:read`, `typing`, `disconnect`.
@@ -126,7 +126,8 @@ The server says no if:
 - this socket already registered (one name per socket, see 1.0.1 in the changelog),
 - the name is empty,
 - someone with that name is already online,
-- the name exists but is offline and the token doesn't match ("This name is already taken.").
+- the name exists but is offline and the token doesn't match ("This name is already taken."),
+- it's a new name and there are already `MAX_USERS` names ("The server is full right now. Try again later.").
 
 New names get a token from `crypto.randomUUID()`. It comes back only in the register reply, and the browser stores it in localStorage as `streamchat:token:<name>`. The browser sends it with every register, including automatic ones after a reconnect.
 
@@ -189,6 +190,7 @@ Socket.IO reconnects by itself. When it does, the page calls `register` again wi
 - Message text never shows up in the log or in `meta`, and neither do tokens.
 - Names are trimmed and cut to 24 characters. Messages are cut to 2000.
 - Socket ids are never sent to other users.
+- IP addresses aren't logged, since the log goes to every tab.
 - Reply callbacks go through `toAck()`, so a client sending junk instead of a function can't crash the server.
 - There's no real login. It's a toy, not something to put on the internet as is.
 

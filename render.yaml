@@ -1,0 +1,28 @@
+# Render setup for a free live demo (https://render.com).
+# In the Render dashboard: New > Blueprint, pick this repo, and Render reads
+# this file. After that, every push to main deploys again by itself.
+#
+# Free plan notes:
+# - The server goes to sleep after about 15 minutes with no visitors. The
+#   next visitor waits around a minute while it wakes up.
+# - Everything is kept in memory, so sleeping or redeploying clears all
+#   users and messages.
+services:
+  - type: web
+    name: streamchat
+    runtime: node
+    plan: free
+    # Frankfurt is the closest free region to Europe and the Middle East.
+    region: frankfurt
+    branch: main
+    # Installs the server, installs the client (including its dev tools,
+    # which the build needs) and builds the client into client/dist.
+    buildCommand: npm run build:deploy
+    # server.js serves client/dist and Socket.IO on the PORT Render gives it.
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # Max number of names kept in memory (see server.js).
+      - key: MAX_USERS
+        value: "200"

@@ -180,3 +180,19 @@ s.on('connect', () => s.emit('register', { name: 'Faker' }, () => {
 ```
 
 No new log lines, no error in the terminal, and no ticks change for anyone.
+
+## 17. Name limit (added in 2.1.1)
+
+1. Start the server with a tiny limit. PowerShell: `$env:MAX_USERS=2; npm start` (bash: `MAX_USERS=2 npm start`).
+2. Join as `A` in one tab and `B` in another.
+3. Try `C` in a third tab. You should get "The server is full right now. Try again later."
+4. Close A's tab and log back in as `A` in the same browser. That still works, because A already has a name.
+5. In the log, the "Socket connected" lines should have no IP address.
+
+## 18. Online build (added in 2.1.1)
+
+Before pushing something that changes the build, check that the Render build works from a clean copy:
+
+1. Clone the repo into a new folder (so there's no `node_modules` or `client/dist`).
+2. Run `npm run build:deploy` and then `npm start`.
+3. http://localhost:3000 should open the app.

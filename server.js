@@ -21,6 +21,8 @@
 //      logged.
 //
 // All data is kept in memory. Restarting the server clears everything.
+// Can run on a free host like Render (see render.yaml): it reads PORT from
+// the environment and caps names (MAX_USERS), messages and log lines.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -100,6 +102,11 @@ const MESSAGE_LIMIT = 1000;
 // receives this buffer so it can show what happened before it joined.
 const logBuffer = [];
 const LOG_LIMIT = 300;
+
+// Max number of names the server keeps. Names are never removed (only a
+// restart clears them), so on a public demo someone could otherwise create
+// names forever and fill up memory. Override with MAX_USERS=500 etc.
+const MAX_USERS = Number(process.env.MAX_USERS) || 200;
 
 // Auto-incrementing message id.
 let msgSeq = 1;
@@ -219,8 +226,9 @@ function toAck(ack) {
 // ===========================================================================
 io.on('connection', (socket) => {
   // A raw socket connected. It is NOT registered yet (no name).
-  const ip = socket.handshake.address;
-  log('info', `Socket connected: id=${socket.id} ip=${ip}`, { type: 'system' });
+  // No IP address in this line: the log goes to every tab, and on a public
+  // server that would show each visitor's IP to everyone else.
+  log('info', `Socket connected: id=${socket.id}`, { type: 'system' });
 
   // Send the recent log history so this panel isn't empty on load.
   socket.emit('server:logs', logBuffer);
@@ -236,6 +244,7 @@ io.on('connection', (socket) => {
   // - Known, offline, right token  -> logs the user back in (keeps history).
   // - Known, offline, wrong token  -> rejected ("This name is already taken.").
   // - Known, online                -> rejected (names are unique while online).
+  // - New name, MAX_USERS reached  -> rejected ("The server is full...").
   // In both success cases `user:online` is broadcast to everyone else.
   // A socket can register only ONCE; a second `register` is rejected.
   socket.on('register', (payload, rawAck) => {
@@ -274,6 +283,13 @@ io.on('connection', (socket) => {
     if (existing && (!payload || payload.token !== existing.token)) {
       log('warn', `Registration rejected: wrong or missing token for "${name}" (socket ${socket.id})`);
       return ack({ ok: false, error: 'This name is already taken.' });
+    }
+
+    // Limit: a brand-new name only fits if we're under MAX_USERS. People
+    // who already have a name can always log back in.
+    if (!existing && users.size >= MAX_USERS) {
+      log('warn', `Registration rejected: server is full (${users.size}/${MAX_USERS} names)`);
+      return ack({ ok: false, error: 'The server is full right now. Try again later.' });
     }
 
     // Either reuse the existing (offline) record or create a fresh one.

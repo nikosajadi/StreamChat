@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.1 (2026-11-26)
+
+Getting it ready to run online as a public demo.
+
+Added:
+- `render.yaml` so the app can be put on Render's free plan with New → Blueprint. Every push to `main` deploys again.
+- `npm run build:deploy`: installs the server and the client (with dev tools) and builds the client in one go. That's what Render runs.
+- `engines` in `package.json` (Node 20 or newer).
+- `MAX_USERS` (default 200). Names are never deleted, so without a limit anyone could fill the server's memory with new names. New names past the limit get "The server is full right now. Try again later." Existing names can always log back in.
+
+Changed:
+- The "Socket connected" log line no longer has the IP address. The log goes to every tab, so on a public server everyone would see everyone's IP.
+
 ## 2.1.0 (2026-11-26)
 
 Added:

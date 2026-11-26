@@ -70,6 +70,21 @@ Open http://localhost:5173. Changes in the React code show up right away, no bui
 
 Open the page in two tabs (or two browsers), join with two different names, and talk to yourself.
 
+### Putting it online (free, on Render)
+
+The repo has a `render.yaml`, so [Render](https://render.com) can set everything up by itself:
+
+1. Make a free account on render.com (signing in with GitHub is easiest).
+2. In the dashboard click **New** → **Blueprint** and pick this repo. Give it access to the repo if it asks.
+3. Render reads `render.yaml` and shows one web service called `streamchat` on the free plan. Click **Apply** (or **Deploy**).
+4. The first build takes a few minutes. When it's done you get a link like `https://streamchat-xxxx.onrender.com`.
+
+After that, every push to `main` goes live by itself.
+
+On the free plan the server falls asleep after about 15 minutes with nobody on it. The next person waits around a minute while it wakes up. Sleeping also clears all users and messages, because everything is in memory.
+
+What the build does: `npm run build:deploy` (installs the server, installs the client with its dev tools, builds the client). Then `npm start`. The server picks up Render's `PORT` by itself.
+
 ### If something doesn't work
 
 - **Page doesn't open:** the server probably isn't running. Run `npm start` again.
@@ -82,7 +97,8 @@ Open the page in two tabs (or two browsers), join with two different names, and 
 ```
 StreamChat/
 ├── server.js          the server
-├── package.json       scripts: start, build, dev:server, dev:client
+├── package.json       scripts: start, build, build:deploy, dev:server, dev:client
+├── render.yaml        settings for putting it online on Render
 ├── client/            the React app
 │   └── src/
 │       ├── App.tsx        the page layout
@@ -146,6 +162,7 @@ A message's `status` is `sent` (the server has it, the other person is offline),
 
 - Restarting the server deletes all users and messages.
 - Only the last 1000 messages are kept.
+- At most 200 names (change it with the `MAX_USERS` environment variable). After that new names get "The server is full right now". People who already have a name can still log back in.
 - One tab per name at a time.
 - Live Wire shows everyone who is talking to whom (never the text). Fine for a demo, but you wouldn't do that in a real messenger.
 - Fonts come from Google Fonts, so the page needs internet for them.
