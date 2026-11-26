@@ -14,6 +14,10 @@
 //      "typing" shows the indicator; it's cleared on stop, on a message from
 //      that person, on "user:offline", or after a 5s safety timeout.
 //   6. On every (re)connect we register again with the same name + token.
+//   7. Read receipts: "message:read { peer }" goes out when a chat is
+//      opened, when a new message lands in the open chat, and when the tab
+//      becomes visible again with a chat open. Never while the tab is
+//      hidden. "message:status" updates the ticks on my own messages.
 //
 // State lives in a reducer so every change is one small, named action.
 // ===========================================================================
@@ -24,6 +28,7 @@ import {
   saveToken,
   normalizeName,
   type ChatMessage,
+  type MessageStatus,
   type PublicUser,
 } from '../lib/socket';
 import { toast } from '../lib/toast';
@@ -57,10 +62,17 @@ type Action =
   | { type: 'user'; user: PublicUser }
   | { type: 'message'; message: ChatMessage }
   | { type: 'typing'; from: string; isTyping: boolean }
+  | { type: 'status'; ids: number[]; status: MessageStatus }
   | { type: 'open'; peer: string | null };
 
 // The other side of a message, from my point of view.
 const peerOf = (m: ChatMessage, me: string) => (m.from === me ? m.to : m.from);
+
+// Status order, so an update that arrives late can't move a tick backwards.
+const STATUS_RANK: Record<MessageStatus, number> = { sent: 0, delivered: 1, read: 2 };
+
+// Is the tab actually on screen? Read receipts only go out when it is.
+const tabVisible = () => document.visibilityState === 'visible';
 
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
@@ -126,6 +138,25 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, typing, announcement };
     }
 
+    // Some of my messages were delivered or read. The ids don't say which
+    // chat they're in, so look through all of them; only touch the
+    // conversations that actually change.
+    case 'status': {
+      const ids = new Set(action.ids);
+      const rank = STATUS_RANK[action.status];
+      let conversations = state.conversations;
+      for (const [peer, list] of Object.entries(state.conversations)) {
+        if (!list.some((m) => ids.has(m.id) && STATUS_RANK[m.status] < rank)) continue;
+        if (conversations === state.conversations) conversations = { ...state.conversations };
+        conversations[peer] = list.map((m) =>
+          ids.has(m.id) && STATUS_RANK[m.status] < rank
+            ? { ...m, status: action.status, delivered: true }
+            : m,
+        );
+      }
+      return conversations === state.conversations ? state : { ...state, conversations };
+    }
+
     // Opening a chat clears its unread counter.
     case 'open': {
       if (!action.peer) return { ...state, activePeer: null };
@@ -149,6 +180,14 @@ export function useChat() {
   activeRef.current = state.activePeer;
   const typingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
+  // ---- message:read (hub method) -------------------------------------------
+  // Tells the server I've seen everything `peer` sent me. Skipped while the
+  // tab is hidden. The server ignores it if nothing was unread, so it's
+  // fine to call this a bit too often.
+  const markRead = useCallback((peer: string | null) => {
+    if (peer && tabVisible()) socket.emit('message:read', { peer });
+  }, []);
+
   // ---- register (hub method) ---------------------------------------------
   // Resolves with an error string, or null on success.
   const register = useCallback(
@@ -159,10 +198,13 @@ export function useChat() {
           if (!res.ok) return resolve(res.error);
           saveToken(res.me, res.token);
           dispatch({ type: 'registered', me: res.me, users: res.users, history: res.history });
+          // After a reconnect the open chat stays open, and messages may
+          // have come in while we were gone.
+          markRead(activeRef.current);
           resolve(null);
         });
       }),
-    [],
+    [markRead],
   );
 
   // ---- socket listeners ---------------------------------------------------
@@ -177,7 +219,18 @@ export function useChat() {
       }
     };
     const onUser = (user: PublicUser) => dispatch({ type: 'user', user });
-    const onMessage = (message: ChatMessage) => dispatch({ type: 'message', message });
+    // A new message in the chat I'm looking at counts as read right away.
+    const onMessage = (message: ChatMessage) => {
+      dispatch({ type: 'message', message });
+      if (message.from === activeRef.current) markRead(message.from);
+    };
+    const onStatus = ({ ids, status }: { ids: number[]; status: MessageStatus }) =>
+      dispatch({ type: 'status', ids, status });
+    // Coming back to the tab with a chat open: whatever arrived meanwhile
+    // has now been seen.
+    const onVisible = () => {
+      if (meRef.current) markRead(activeRef.current);
+    };
 
     // Typing with a 5s safety timeout in case the "stop" never arrives.
     const onTyping = ({ from, isTyping }: { from: string; isTyping: boolean }) => {
@@ -197,7 +250,9 @@ export function useChat() {
     socket.on('user:online', onUser);
     socket.on('user:offline', onUser);
     socket.on('message:new', onMessage);
+    socket.on('message:status', onStatus);
     socket.on('typing', onTyping);
+    document.addEventListener('visibilitychange', onVisible);
     const timers = typingTimers.current;
     return () => {
       socket.off('connect', onConnect);
@@ -205,10 +260,12 @@ export function useChat() {
       socket.off('user:online', onUser);
       socket.off('user:offline', onUser);
       socket.off('message:new', onMessage);
+      socket.off('message:status', onStatus);
       socket.off('typing', onTyping);
+      document.removeEventListener('visibilitychange', onVisible);
       timers.forEach(clearTimeout);
     };
-  }, [register]);
+  }, [register, markRead]);
 
   // ---- outgoing typing ----------------------------------------------------
   // Send "typing: true" once when it starts, "false" once when it stops,
@@ -246,8 +303,9 @@ export function useChat() {
     (peer: string | null) => {
       setTyping(false); // leaving a chat mid-typing counts as stopping
       dispatch({ type: 'open', peer });
+      markRead(peer); // opening a chat means I've seen what's in it
     },
-    [setTyping],
+    [setTyping, markRead],
   );
 
   // Contacts: everyone except me. Online first, then most recent chat,

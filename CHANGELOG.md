@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.0 (2026-11-26)
+
+Added:
+- Message ticks (read receipts), like WhatsApp. Under your own messages: one grey tick = the server stored it, two grey = it's in the other person's browser, two terracotta = they opened the chat and saw it. Each one has an aria-label ("Sent", "Delivered", "Read") for screen readers. In a group of bubbles the ticks sit next to the time under the last one.
+- Messages have a `status` field: `sent`, `delivered` or `read`. It only goes forward. The old `delivered` boolean is still there so older clients keep working.
+- New event `message:read { peer }` (browser to server). Marks everything `peer` sent me as read. "Me" comes from the socket, never from the payload. The browser sends it when you open a chat, when a message arrives in the open chat, and when you come back to the tab, but never while the tab is hidden.
+- New event `message:status { ids, status }` (server to browser). Goes only to the room of the person who sent those messages.
+- Messages that were waiting for an offline user turn `delivered` when they log back in, and the sender is told.
+- Log lines for these: `Delivered N stored message(s) "A" → "B"` and `"B" read N message(s) from "A"`, with meta `{ type: 'message', from, to }`. No message text. A `message:read` that changes nothing isn't logged.
+
+Changed:
+- The " · stored" note next to the time is gone, the single tick shows that now.
+
 ## 2.0.0 (2026-11-24)
 
 New React client. The server's events and payloads didn't change, so old clients still work against it.

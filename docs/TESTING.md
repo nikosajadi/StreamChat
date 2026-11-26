@@ -156,3 +156,27 @@ s.on('connect', () => s.emit('register', { name: 'Solo' }, () =>
 1. Have Alice and Bob logged in.
 2. Stop the server (Ctrl+C) and start it again.
 3. Both tabs should show "disconnected" and then log back in by themselves. Old messages are gone because everything is kept in memory.
+
+## 16. Ticks (added in 2.1.0)
+
+The ticks are next to the time under your own last message. Hover one to see "Sent", "Delivered" or "Read".
+
+1. Join as Bob, then close his tab. Join as Alice and send Bob a message. One grey tick.
+2. Open a new tab and join as Bob again. On Alice's side it turns into two grey ticks. The log says `Delivered 1 stored message(s) "Alice" → "Bob"`.
+3. Bob opens the chat with Alice. Two terracotta ticks on Alice's side, and the log says `"Bob" read 1 message(s) from "Alice"`.
+4. With Bob's chat with Alice still open, Alice sends another one. It goes straight to terracotta.
+5. Bob opens a chat with someone else. Alice sends again: two grey ticks. Bob goes back to Alice's chat: terracotta.
+6. Bob keeps Alice's chat open and switches to another browser tab (or minimizes the window). Alice sends: it stays grey. Bob comes back to the tab: terracotta.
+7. Console, check nobody can fake a read:
+
+```js
+const { io } = await import('/socket.io/socket.io.esm.min.js');
+const s = io({ forceNew: true });
+s.on('connect', () => s.emit('register', { name: 'Faker' }, () => {
+  s.emit('message:read', { peer: 'Faker' });
+  s.emit('message:read', { peer: 'Nobody' });
+  s.emit('message:read', 42);
+}));
+```
+
+No new log lines, no error in the terminal, and no ticks change for anyone.

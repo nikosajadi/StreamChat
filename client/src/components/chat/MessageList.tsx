@@ -6,18 +6,44 @@
 //   tighter spacing, softer corners, and the time only under the last one.
 // - Mine on the right in the accent color, theirs on the left on paper-2.
 // - A message that's just 1-3 emoji is shown big, like a sticker.
+// - Ticks next to the time under my own messages (last one of each group):
+//   one grey tick = sent, two grey = delivered, two terracotta = read.
 // - Auto-scrolls to the bottom when you're already near it.
 // All text is rendered as plain React text (escaped), never as HTML.
 // ===========================================================================
 import { Fragment, useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ChatMessage } from '../../lib/socket';
+import { Check, CheckCheck } from 'lucide-react';
+import type { ChatMessage, MessageStatus } from '../../lib/socket';
 import { dayKey, dayLabel, formatTime } from '../../lib/format';
 import { isBigEmoji } from '../../lib/emoji';
 import { TypingDots } from './TypingDots';
 import { ArtFirstMessage, EmptyState } from '../ui/Illustrations';
 
 const GROUP_GAP = 5 * 60 * 1000;
+
+// Label read out by screen readers for each tick state.
+const STATUS_LABEL: Record<MessageStatus, string> = {
+  sent: 'Sent',
+  delivered: 'Delivered',
+  read: 'Read',
+};
+
+// The tick icon for one of my messages. Read uses accent-ink (the darker
+// terracotta) so it still passes contrast at this small size.
+function Ticks({ status }: { status: MessageStatus }) {
+  const Icon = status === 'sent' ? Check : CheckCheck;
+  return (
+    <span role="img" aria-label={STATUS_LABEL[status]} title={STATUS_LABEL[status]} className="inline-flex">
+      <Icon
+        aria-hidden
+        size={14}
+        strokeWidth={2.25}
+        className={status === 'read' ? 'text-accent-ink' : 'text-ink-muted'}
+      />
+    </span>
+  );
+}
 
 interface Props {
   me: string;
@@ -103,11 +129,16 @@ export function MessageList({ me, peer, messages, peerTyping }: Props) {
                   >
                     {m.text}
                   </div>
+                  {/* Time (and ticks, if mine) under the last message of a
+                      group. The ticks show that last message's status; the
+                      earlier ones in the group are always at least that far,
+                      because status only moves forward and goes in order. */}
                   {!sameAsNext && (
-                    <time dateTime={new Date(m.time).toISOString()} className="mt-1 px-1 font-mono text-[10.5px] text-ink-muted">
-                      {formatTime(m.time)}
-                      {mine && !m.delivered ? ' · stored' : ''}
-                    </time>
+                    <div className="mt-1 flex items-center gap-1 px-1 font-mono text-[10.5px] text-ink-muted">
+                      <time dateTime={new Date(m.time).toISOString()}>{formatTime(m.time)}</time>
+                      {/* `?? ...` covers an older server that only sends `delivered` */}
+                      {mine && <Ticks status={m.status ?? (m.delivered ? 'delivered' : 'sent')} />}
+                    </div>
                   )}
                 </motion.li>
               </Fragment>

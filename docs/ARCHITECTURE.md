@@ -27,6 +27,7 @@ Inside the server:
  WebSocket  ◀──▶│  Socket.IO                                                       │
                 │    ├─ register        ──▶ users Map                              │
                 │    ├─ message:send    ──▶ messages[]  ──▶ room user:<to>         │
+                │    ├─ message:read    ──▶ messages[]  ──▶ room user:<sender>     │
                 │    ├─ typing          ──────────────────▶ room user:<to>         │
                 │    └─ disconnect      ──▶ users Map (offline)                    │
                 │                                                                  │
@@ -39,15 +40,15 @@ Inside the server:
 - Setup: Express app, HTTP server and Socket.IO on the same port. Serves `client/dist` if it exists, otherwise `/` says to run the build.
 - State: `users` (a Map by name), `messages` (last 1000 messages), `logBuffer` (last 300 log lines).
 - `log(level, text, meta?)`: the one place everything gets logged. Prints a colored line in the terminal, saves it in the buffer and sends it to every tab. `meta` tells clients what the line is about (see below).
-- Small helpers: `publicUser`, `userList`, `historyFor`, `cleanName`, `onlineCount`, `toAck`.
-- Socket handlers: `register`, `message:send`, `typing`, `disconnect`.
+- Small helpers: `publicUser`, `userList`, `historyFor`, `cleanName`, `onlineCount`, `setStatus`, `toAck`.
+- Socket handlers: `register`, `message:send`, `message:read`, `typing`, `disconnect`.
 
 ## Client (client/src)
 
 How the code is split:
 
 - `lib/socket.ts`: creates the one socket for the whole app and has the TypeScript types for every event (`ServerToClientEvents`, `ClientToServerEvents`), matching `server.js`. Also the token helpers (`loadToken`, `saveToken`) and a small buffer of log lines that arrive before React has mounted.
-- `hooks/useChat.ts`: a reducer with users, conversations, unread counts, who's typing, and the open chat. Has `register`, `sendMessage`, `setTyping` and `openChat`. Logs back in by itself after a reconnect.
+- `hooks/useChat.ts`: a reducer with users, conversations, unread counts, who's typing, and the open chat. Has `register`, `sendMessage`, `setTyping` and `openChat`. Logs back in by itself after a reconnect. Also sends `message:read` and updates the ticks from `message:status`.
 - `hooks/useConnection.ts`: Connecting / Connected / Reconnecting / Offline, from the socket's own events and the browser's online/offline events.
 - `hooks/useLiveWire.ts`: keeps the event log (newest first, max 200), the filter, pause, and a short-lived list of animations for the diagram.
 - `hooks/useTheme.ts`: Paper or Night ink. First visit follows the system, after that the saved choice wins.
@@ -69,7 +70,7 @@ The server's log lines carry `meta`, so the client doesn't have to read the text
 
 | `meta.type` | Sent for | What the diagram does |
 |-------------|----------|------------------------|
-| `message`   | a message was sent (`from`, `to`) | terracotta dot: sender → server → receiver |
+| `message`   | a message was sent, or stored messages got delivered, or someone read messages (`from`, `to`) | terracotta dot: from → server → to. For a receipt that's the reader going back to the sender |
 | `typing`    | typing started or stopped (`from`, `to`, `isTyping`) | smaller grey dot along the same path |
 | `register`  | new user or logged back in (`from`) | indigo ring on that user |
 | `presence`  | came online / went offline (`from`, `online`) | indigo ring on that user |
@@ -92,8 +93,8 @@ Both are generated in code (`lib/art.ts`). A name is hashed into a seed, and the
 // user, as sent to other clients (no token, no socket id)
 { name, online, lastSeen }
 
-// message
-{ id, from, to, text, time, delivered }
+// message (status only moves forward; delivered is the old flag, true unless status is 'sent')
+{ id, from, to, text, time, delivered, status /* sent|delivered|read */ }
 
 // log line (meta is optional, never has message text or tokens)
 { time, level /* info|success|warn|error|msg|typing */, text,
@@ -142,7 +143,24 @@ Bob                              Server                              Alice
  │ show own bubble                 │ ── server:log ──▶ everyone        │
 ```
 
-If Alice is offline the message is saved with `delivered: false` and she gets it in her history next time she logs in.
+If Alice is offline the message is saved with `status: 'sent'` and she gets it in her history next time she logs in.
+
+### Ticks (read receipts)
+
+```
+Bob                              Server                              Alice
+ │                                 │ ◀── register (Alice comes back)   │
+ │ ◀── message:status {ids, delivered}  sent → delivered               │
+ │                                 │                                   │
+ │                                 │ ◀── message:read {peer:"Bob"} ─── │ opens the chat
+ │ ◀── message:status {ids, read}  │ delivered → read                  │
+```
+
+- A message starts as `delivered` if Alice is online, or `sent` if not.
+- When Alice logs in, everything waiting for her turns `delivered` (before her history is sent back), and each sender gets `message:status`.
+- Alice's browser sends `message:read { peer }` when she opens a chat, when a message comes into the chat she has open, and when she comes back to the tab. Not while the tab is hidden. The server uses `socket.data.name` as the reader, never something from the payload.
+- `setStatus()` on the server only moves a message forward and sends `message:status` only to the sender's room. On the client the reducer does the same check, so a late update can't move a tick back.
+- Nothing is logged when a `message:read` changes nothing, otherwise every chat switch would add a line.
 
 Sending to yourself is rejected. Only the last 1000 messages are kept; older ones are dropped.
 
@@ -178,4 +196,4 @@ Socket.IO reconnects by itself. When it does, the page calls `register` again wi
 
 - Database: swap the `users` Map and `messages` array for a database. The socket events can stay the same.
 - Group chats: add rooms like `room:<id>` and events like `room:join` and `room:message`.
-- Seen ticks: add a `message:read` event and a `readAt` field on messages.
+- Read time: ticks are there now, but there's no "read at 14:02". A `readAt` field on messages would do it.

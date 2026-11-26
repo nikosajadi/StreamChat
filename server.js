@@ -10,6 +10,8 @@
 //      logging back in to that name later needs the same token.
 //   3. Passes private messages between users in real time. Keeps the last
 //      MESSAGE_LIMIT (1000) messages so offline users get them later.
+//      Each message has a status (sent / delivered / read) and the sender
+//      is told when it changes, for the ticks under their bubbles.
 //   4. Forwards "is typing" from one user to another, and clears it if the
 //      typing user disconnects.
 //   5. Tracks online / offline and tells every client.
@@ -84,7 +86,13 @@ const users = new Map();
 
 // Recent messages, oldest first. Capped at MESSAGE_LIMIT so memory can't
 // grow forever; the oldest ones are dropped first (same idea as logBuffer).
-// Shape: { id, from, to, text, time, delivered }
+// Shape: { id, from, to, text, time, delivered, status }
+//   - status: 'sent'      stored, recipient was offline
+//             'delivered' the recipient's browser has it
+//             'read'      the recipient opened the chat and saw it
+//     It only ever moves forward (sent -> delivered -> read).
+//   - delivered is the older boolean, kept so old clients still work.
+//     It's true whenever status isn't 'sent'.
 const messages = [];
 const MESSAGE_LIMIT = 1000;
 
@@ -163,6 +171,27 @@ function onlineCount() {
   return [...users.values()].filter((u) => u.online).length;
 }
 
+// Moves messages to a new status and tells each sender which of theirs
+// changed. `list` is the messages to update; ones already at that status
+// (or further) are skipped. Returns a Map of sender -> ids that changed,
+// so the caller can log it. Never sends message text, only ids.
+const STATUS_RANK = { sent: 0, delivered: 1, read: 2 };
+function setStatus(list, status) {
+  const bySender = new Map();
+  for (const m of list) {
+    if (STATUS_RANK[m.status] >= STATUS_RANK[status]) continue;
+    m.status = status;
+    m.delivered = true; // delivered or read both mean the browser has it
+    if (!bySender.has(m.from)) bySender.set(m.from, []);
+    bySender.get(m.from).push(m.id);
+  }
+  // Only the original sender cares, so it goes to their room only.
+  for (const [sender, ids] of bySender) {
+    io.to(`user:${sender}`).emit('message:status', { ids, status });
+  }
+  return bySender;
+}
+
 // Returns a safe acknowledgement callback.
 // Socket.IO passes whatever the client sent as the last argument, so `ack`
 // may be a number, string, object, or missing. A default parameter
@@ -181,10 +210,11 @@ function toAck(ack) {
 //   -----------------           -------------------------------------------
 //   register     (ack)          server:logs   (log history, on connect)
 //   message:send (ack)          server:log    (one new log entry, to all)
-//   typing                      user:new      (a brand-new user registered)
-//                               user:online   (a user came online)
+//   message:read                user:new      (a brand-new user registered)
+//   typing                      user:online   (a user came online)
 //                               user:offline  (a user went offline)
 //                               message:new   (incoming message, to recipient)
+//                               message:status (your messages were delivered/read)
 //                               typing        (someone is typing to you)
 // ===========================================================================
 io.on('connection', (socket) => {
@@ -275,6 +305,18 @@ io.on('connection', (socket) => {
     // to this room, so delivery doesn't depend on a specific socket id.
     socket.join(`user:${name}`);
 
+    // Messages that came in while this user was away are now in their
+    // browser (they're in the history below), so they count as delivered.
+    // Done before the ack so the history already has the new status.
+    const waiting = messages.filter((m) => m.to === name && m.status === 'sent');
+    for (const [sender, ids] of setStatus(waiting, 'delivered')) {
+      log('msg', `Delivered ${ids.length} stored message(s) "${sender}" → "${name}"`, {
+        type: 'message',
+        from: name,
+        to: sender,
+      });
+    }
+
     // Reply to the caller with everything it needs to render the UI.
     // The token goes ONLY to this caller (in the ack), never in a broadcast.
     ack({
@@ -308,8 +350,9 @@ io.on('connection', (socket) => {
   // Ack:     { ok: true, message } | { ok: false, error }
   //
   // Stores the message and pushes `message:new` to the recipient's room.
-  // If the recipient is offline the message is still stored and will be
-  // returned in their history the next time they log in.
+  // If the recipient is offline the message is still stored (status 'sent')
+  // and will be returned in their history the next time they log in, which
+  // turns it into 'delivered'. Online recipients get it as 'delivered' now.
   socket.on('message:send', (payload, rawAck) => {
     // Always callable, even if the client sent a non-function (see toAck).
     const ack = toAck(rawAck);
@@ -333,6 +376,7 @@ io.on('connection', (socket) => {
       text,
       time: Date.now(),
       delivered: recipient.online, // true if pushed live, false if only stored
+      status: recipient.online ? 'delivered' : 'sent',
     };
     messages.push(msg);
 
@@ -352,6 +396,35 @@ io.on('connection', (socket) => {
       `Message #${msg.id} "${from}" → "${to}" (${recipient.online ? 'delivered' : 'stored, recipient offline'}), ${text.length} chars`,
       { type: 'message', from, to }
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // Hub method: message:read
+  // -------------------------------------------------------------------------
+  // Payload: { peer }
+  // "I've seen everything `peer` sent me." Marks all messages from peer to
+  // me as 'read' and sends `message:status { ids, status: 'read' }` to the
+  // peer's room. "Me" always comes from socket.data.name, never from the
+  // payload, so nobody can mark someone else's messages as read.
+  // The client sends this when it opens a chat and when a new message
+  // arrives in the open chat (only while the tab is visible).
+  socket.on('message:read', (payload) => {
+    const me = socket.data.name;
+    const peer = cleanName(payload && payload.peer);
+
+    // Ignore unregistered sockets, unknown users and myself.
+    if (!me || peer === me || !users.has(peer)) return;
+
+    const unread = messages.filter((m) => m.from === peer && m.to === me && m.status !== 'read');
+    const ids = setStatus(unread, 'read').get(peer);
+
+    // Nothing new was read: stay quiet so the log isn't flooded.
+    if (!ids) return;
+    log('msg', `"${me}" read ${ids.length} message(s) from "${peer}"`, {
+      type: 'message',
+      from: me,
+      to: peer,
+    });
   });
 
   // -------------------------------------------------------------------------

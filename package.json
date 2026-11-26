@@ -1,6 +1,6 @@
 {
   "name": "streamchat",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Small real-time messenger: Node.js + Socket.IO server with a React client",
   "main": "server.js",
   "scripts": {

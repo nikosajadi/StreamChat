@@ -12,6 +12,7 @@ On the right there's a panel called Live Wire. It shows the server in the middle
 - See everyone else. Online people are at the top, offline people show "last seen".
 - Send private messages. If the other person is offline, they get it when they come back.
 - See "typing…" when someone is writing to you.
+- Ticks under your messages, like WhatsApp: one grey tick when the server has it, two grey when it reached the other person's browser, two orange when they opened the chat and saw it.
 - Unread counts, search, emoji.
 - Light and dark theme (the moon/sun button at the top).
 - Works on a phone too. Contacts and chat become two screens.
@@ -121,6 +122,7 @@ Browser to server:
 |----------------|--------------------|------------------------------------------------------|-----------------------------|
 | `register`     | `{ name, token? }` | `{ ok, me, token, users, history }` or `{ ok:false, error }` | join, or log back in    |
 | `message:send` | `{ to, text }`     | `{ ok, message }` or `{ ok:false, error }`            | send a message              |
+| `message:read` | `{ peer }`         | nothing                                              | I've seen what `peer` sent me |
 | `typing`       | `{ to, isTyping }` | nothing                                              | started / stopped typing    |
 
 Server to browser:
@@ -132,8 +134,11 @@ Server to browser:
 | `user:new`     | `{ name, online, lastSeen }`              | everyone else       | a new person joined          |
 | `user:online`  | `{ name, online, lastSeen }`              | everyone else       | someone came online          |
 | `user:offline` | `{ name, online, lastSeen }`              | everyone            | someone left                 |
-| `message:new`  | `{ id, from, to, text, time, delivered }` | the person it's for | you got a message            |
+| `message:new`  | `{ id, from, to, text, time, delivered, status }` | the person it's for | you got a message    |
+| `message:status` | `{ ids, status }`                       | the person who sent those messages | your messages were delivered or read |
 | `typing`       | `{ from, isTyping }`                      | the person it's for | someone is typing to you     |
+
+A message's `status` is `sent` (the server has it, the other person is offline), `delivered` (it's in their browser) or `read` (they opened the chat). It only goes forward. The browser sends `message:read` when you open a chat, when a message comes into the chat you have open, and when you come back to the tab. Never while the tab is in the background. The server takes "who read it" from the connection, not from the payload, so you can't mark someone else's messages as read.
 
 `meta` on a log line says what it was about: `type` (message, typing, presence, register or system) and who (`from`, `to`). Live Wire uses it to draw the dots.
 
@@ -148,7 +153,7 @@ Server to browser:
 ## Maybe later
 
 - [ ] Save things in a database
-- [ ] Read receipts
+- [x] Read receipts (2.1.0)
 - [ ] Group chats
 - [ ] Real login with a password
 - [ ] Automatic tests

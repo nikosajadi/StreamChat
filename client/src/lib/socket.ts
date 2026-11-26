@@ -9,10 +9,11 @@
 //   -----------------           -------------------------------------------
 //   register     (ack)          server:logs   (log history, on connect)
 //   message:send (ack)          server:log    (one new log entry, to all)
-//   typing                      user:new      (a brand-new user registered)
-//                               user:online   (a user came online)
+//   message:read                user:new      (a brand-new user registered)
+//   typing                      user:online   (a user came online)
 //                               user:offline  (a user went offline)
 //                               message:new   (incoming message)
+//                               message:status (my messages delivered/read)
 //                               typing        (someone is typing to you)
 // ===========================================================================
 import { io, type Socket } from 'socket.io-client';
@@ -28,6 +29,15 @@ export interface PublicUser {
   lastSeen: number;
 }
 
+/**
+ * Where a message is, for the ticks under my own bubbles:
+ *   sent      = stored by the server (one grey tick)
+ *   delivered = in the recipient's browser (two grey ticks)
+ *   read      = they opened the chat and saw it (two terracotta ticks)
+ * It only moves forward.
+ */
+export type MessageStatus = 'sent' | 'delivered' | 'read';
+
 /** A stored private message. */
 export interface ChatMessage {
   id: number;
@@ -35,8 +45,9 @@ export interface ChatMessage {
   to: string;
   text: string;
   time: number;
-  /** true if the recipient was online when it was sent */
+  /** older flag, true when status isn't 'sent'. Use `status` instead. */
   delivered: boolean;
+  status: MessageStatus;
 }
 
 export type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'msg' | 'typing';
@@ -83,12 +94,16 @@ export interface ServerToClientEvents {
   'user:online': (user: PublicUser) => void;
   'user:offline': (user: PublicUser) => void;
   'message:new': (message: ChatMessage) => void;
+  /** some of MY messages changed status (only sent to the sender) */
+  'message:status': (payload: { ids: number[]; status: MessageStatus }) => void;
   typing: (payload: { from: string; isTyping: boolean }) => void;
 }
 
 export interface ClientToServerEvents {
   register: (payload: { name: string; token?: string }, ack: (res: RegisterAck) => void) => void;
   'message:send': (payload: { to: string; text: string }, ack: (res: SendAck) => void) => void;
+  /** "I've seen everything `peer` sent me" */
+  'message:read': (payload: { peer: string }) => void;
   typing: (payload: { to: string; isTyping: boolean }) => void;
 }
 
